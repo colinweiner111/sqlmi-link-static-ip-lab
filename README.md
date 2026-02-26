@@ -1,0 +1,310 @@
+# SQL MI Link Static IP Validation Lab
+
+## The Challenge
+
+Cross-cloud and hybrid VPN/firewall configurations often require a **single, fixed destination IP** on the Azure side for allow-listing and security inspection. SQL Managed Instance Link replication uses **TCP port 5022** (database mirroring), plus **port 1433** (TDS) and **ports 11000-11999** (redirect). The SQL MI FQDN resolves to an IP within the MI subnet that **can change** during maintenance or failover events.
+
+### Why Application Gateway Won't Work
+
+**Azure Application Gateway is a Layer 7 (HTTP/HTTPS) load balancer.** It cannot proxy raw TCP traffic.
+
+| Capability | Application Gateway | Required |
+|---|---|---|
+| HTTP/HTTPS proxy | Yes | No |
+| WebSocket proxy | Yes | No |
+| Raw TCP forwarding | **No** | **Yes** |
+| Port 5022 (DB mirroring) | **Not supported** | **Required** |
+| Port 1433 (SQL TDS) | **Not supported** | **Required** |
+| Ports 11000-11999 (redirect) | **Not supported** | **Required** |
+
+SQL MI Link replication uses the database mirroring protocol on TCP 5022, SQL client connections on port 1433, and redirect ports 11000-11999. None of this is HTTP/HTTPS traffic. Application Gateway would fail immediately.
+
+**Verdict: Right pattern, wrong Azure service.**
+
+### Why Private Endpoint Doesn't Solve This Either
+
+| Scenario | Port | Private Endpoint Support |
+|---|---|---|
+| SQL MI standard connectivity | 1433 | Yes |
+| SQL MI Link / AG replication | **5022** | **No** |
+| MI redirect connections | **11000-11999** | **No** |
+
+Private Endpoint for SQL MI only supports port 1433, making it unsuitable for MI Link and redirect scenarios.
+
+---
+
+## Architecture
+
+<p align="center">
+  <img src="image/architecture.drawio.svg?v=2" alt="Architecture diagram — ILB + HAProxy TCP proxy for SQL MI Link" width="820" />
+</p>
+
+### Why This Works
+
+| Requirement | How It's Met |
+|---|---|
+| Single static IP for VPN allow-list | Load Balancer frontend: `10.0.1.10` |
+| TCP 5022, 1433, 11000-11999 forwarding | LB HA Ports rule + HAProxy `mode tcp` (3 frontends) |
+| Backend defined by FQDN | HAProxy `resolvers azure` with `hold valid 10s` |
+| Backend IP can change | HAProxy re-resolves FQDN automatically |
+| No client-side changes needed | Static IP never changes |
+
+---
+
+## Lab Environment
+
+This lab deploys a **real Azure SQL Managed Instance (free tier)** behind an HAProxy TCP proxy and Internal Standard LB, proving the static IP pattern works end-to-end.
+
+A simulated backend (2 VMs with socat on 5022 + Private DNS) is also deployed as a fast-validation fallback that doesn't require the 30-60 minute MI provisioning time. The real SQL MI handles all three port ranges (5022, 1433, 11000-11999).
+
+### Network Layout
+
+The lab uses **two VNets with bidirectional peering** to simulate a cross-network boundary:
+
+| VNet | CIDR | Simulates |
+|---|---|---|
+| `vnet-azure` | 10.0.0.0/16 | Azure side (LB + proxy + SQL MI) |
+| `vnet-client` | 10.1.0.0/16 | Remote / on-premises network |
+
+| Component | VNet | Subnet | IP |
+|---|---|---|---|
+| Load Balancer frontend | vnet-azure | proxy-subnet (10.0.1.0/24) | 10.0.1.10 (static) |
+| HAProxy VM | vnet-azure | proxy-subnet (10.0.1.0/24) | Dynamic |
+| **SQL Managed Instance** | **vnet-azure** | **mi-subnet (10.0.4.0/24)** | **Dynamic (FQDN-resolved)** |
+| Backend VM A (fallback) | vnet-azure | backend-subnet (10.0.2.0/24) | 10.0.2.4 (static) |
+| Backend VM B (fallback) | vnet-azure | backend-subnet (10.0.2.0/24) | 10.0.2.5 (static) |
+| Client VM | vnet-client | client-subnet (10.1.1.0/24) | Dynamic + Public IP |
+
+VNet peering allows the client to reach the LB static IP across the network boundary, simulating VPN reachability.
+
+### NSG Rules
+
+| Source | Destination | Port(s) | Purpose |
+|---|---|---|---|
+| client-subnet | proxy-subnet | 5022 | Client → LB → HAProxy (MI Link) |
+| client-subnet | proxy-subnet | 1433 | Client → LB → HAProxy (SQL TDS) |
+| client-subnet | proxy-subnet | 11000-11999 | Client → LB → HAProxy (MI redirect) |
+| AzureLoadBalancer | proxy-subnet | 5022 | LB health probes |
+| AzureLoadBalancer | proxy-subnet | 1433 | LB health probes |
+| AzureLoadBalancer | proxy-subnet | 11000-11999 | LB health probes |
+| proxy-subnet | backend-subnet | 5022 | HAProxy → Backend VMs (fallback) |
+| proxy-subnet | mi-subnet | 5022 | HAProxy → SQL MI (MI Link) |
+| proxy-subnet | mi-subnet | 1433 | HAProxy → SQL MI (SQL TDS) |
+| proxy-subnet | mi-subnet | 11000-11999 | HAProxy → SQL MI (redirect) |
+| * | all subnets | 22 | SSH management access |
+| client-subnet | proxy-subnet | 8404 | HAProxy stats dashboard (internal only) |
+
+### DNS
+
+- **Real MI FQDN:** `<mi-name>.database.windows.net` (auto-created by SQL MI)
+- **Simulated zone (fallback):** `fake-sqlmi.database.windows.net` (Private DNS, linked to both VNets)
+- **Simulated record:** `sqlmi-test` → `10.0.2.4` (initial, TTL 10s)
+
+### HAProxy Configuration
+
+HAProxy is configured via cloud-init to proxy **three port ranges** to the MI FQDN:
+
+```
+mode    tcp
+
+resolvers azure
+    nameserver dns1 168.63.129.16:53
+    hold valid 10s
+
+# --- MI Link (database mirroring) ---
+frontend sqlmi_link_frontend
+    bind *:5022
+    default_backend sqlmi_link_backend
+
+backend sqlmi_link_backend
+    server sqlmi-link <MI_FQDN>:5022 check resolvers azure resolve-prefer ipv4
+
+# --- SQL client connections (TDS) ---
+frontend sqlmi_tds_frontend
+    bind *:1433
+    default_backend sqlmi_tds_backend
+
+backend sqlmi_tds_backend
+    server sqlmi-tds <MI_FQDN>:1433 check resolvers azure resolve-prefer ipv4
+
+# --- MI redirect ports (connection policy = Redirect) ---
+frontend sqlmi_redirect_frontend
+    bind *:11000-11999
+    default_backend sqlmi_redirect_backend
+
+backend sqlmi_redirect_backend
+    server sqlmi-redir <MI_FQDN> resolvers azure resolve-prefer ipv4
+```
+
+Key settings:
+- `mode tcp` — Layer 4 forwarding (not HTTP)
+- `resolvers azure` — Uses Azure's internal DNS (`168.63.129.16`)
+- `hold valid 10s` — Re-resolves the FQDN every 10 seconds
+- `resolve-prefer ipv4` — Ensures IPv4 resolution
+- Three frontends cover all MI connectivity: replication (5022), TDS (1433), and redirect (11000-11999)
+
+### HAProxy Stats Dashboard
+
+A built-in stats dashboard is enabled on **port 8404** (internal only — no public IP):
+
+- **URL:** `http://<haproxy-private-ip>:8404/stats`
+- **Access from win-client (RDP):** Open browser → `http://10.0.1.11:8404/stats`
+- **Access via SSH tunnel:** `ssh -L 8404:10.0.1.11:8404 azureuser@<vm-client-public-ip>` then open `http://localhost:8404/stats`
+
+The dashboard shows real-time status of all frontends (5022, 1433, 11000-11999), backend health checks, session counts, and bytes transferred. Auto-refreshes every 5 seconds.
+
+---
+
+## Deployment
+
+### Prerequisites
+
+- Azure CLI installed and logged in (`az login`)
+- Contributor access to an Azure subscription
+
+### Deploy
+
+```powershell
+.\scripts\deploy.ps1 `
+    -ResourceGroupName "rg-sqlmi-link-lab-v2" `
+    -Location "westcentralus" `
+    -AdminUsername "azureuser" `
+    -AdminPassword (ConvertTo-SecureString "YourP@ssword123!" -AsPlainText -Force)
+```
+
+### Current Deployment Details
+
+| Resource | Value |
+|---|---|
+| Resource Group | `rg-sqlmi-link-lab-v2` |
+| Region | `westcentralus` |
+| Admin Username | `azureuser` |
+| Admin Password | *(set during deployment — check `deploy.ps1` params)* |
+| LB Static IP | `10.0.1.10` |
+| Client VM Public IP | *(check deployment outputs)* |
+| SQL MI FQDN (real) | *(check deployment outputs — `sqlmiFqdn`)* |
+| SQL MI FQDN (simulated) | `sqlmi-test.fake-sqlmi.database.windows.net` |
+| Backend VM-A IP | `10.0.2.4` |
+| Backend VM-B IP | `10.0.2.5` |
+| Auth Mode | **Entra-only** (corporate policy) |
+
+### What Gets Deployed
+
+| Resource | Type | Purpose |
+|---|---|---|
+| vnet-azure | Virtual Network | 10.0.0.0/16 — Azure side (proxy + backend + MI subnets) |
+| vnet-client | Virtual Network | 10.1.0.0/16 — Simulated remote network (client subnet) |
+| peer-azure-to-client / peer-client-to-azure | VNet Peering | Bidirectional connectivity |
+| nsg-proxy / nsg-backend / nsg-mi / nsg-client | NSGs | TCP 5022, 1433, 11000-11999 allow rules |
+| **SQL Managed Instance (free tier)** | **SQL MI** | **Real MI Link endpoint (ports 5022, 1433, 11000-11999)** |
+| natgw-lab + pip-natgw | NAT Gateway + Public IP | Outbound internet for proxy + backend subnets (cloud-init) |
+| rt-mi-subnet | Route Table | Required route table for SQL MI subnet |
+| fake-sqlmi.database.windows.net | Private DNS Zone | Simulates SQL MI FQDN (fallback testing) |
+| vm-sql-a, vm-sql-b | Linux VMs | Simulated SQL MI fallback (socat on 5022 only) |
+| vm-haproxy | Linux VM | L4 TCP proxy |
+| lb-sqlmi-proxy | Standard Load Balancer | Static IP entry point |
+| vm-client | Linux VM | Test client (with public IP for SSH) |
+| win-client | Windows VM | Test client with SSMS (Static Public IP for RDP) |
+
+---
+
+## Testing
+
+All validation was performed from **win-client** (Windows VM with SSMS), connecting through the HAProxy proxy via the LB static IP. This proves the solution works for real SQL MI Link operations — not just port reachability.
+
+### Prerequisites — Hosts File Override
+
+On win-client, add a hosts file entry so SSMS resolves the MI FQDN to the LB static IP instead of the MI's actual subnet IP:
+
+```
+# C:\Windows\System32\drivers\etc\hosts
+10.0.1.10  <mi-name>.<unique-id>.database.windows.net
+```
+
+This forces all SSMS traffic (ports 5022, 1433, 11000-11999) through the proxy path:
+`win-client → LB (10.0.1.10) → HAProxy → real SQL MI`
+
+### Test 1 — HAProxy Backend Health
+
+Open a browser on win-client and navigate to the HAProxy stats dashboard:
+
+```
+http://10.0.1.11:8404/stats
+```
+
+**Expected:** All three backends show **UP** with **L4OK** health checks:
+
+| Backend | Status | Check |
+|---|---|---|
+| sqlmi_link (5022) | UP | L4OK |
+| sqlmi_tds (1433) | UP | L4OK |
+| sqlmi_redirect (11000-11999) | UP | L4OK |
+
+This confirms HAProxy can reach the MI on all port ranges and is actively forwarding traffic.
+
+### Test 2 — MI Link Creation (SSMS Wizard)
+
+From win-client, open SSMS and connect to the source SQL Server. Run the **New SQL Managed Instance link** wizard:
+
+1. SSMS → Object Explorer → right-click **Always On High Availability** → **New SQL Managed Instance link...**
+2. Complete the wizard: select database, specify the MI as the secondary replica
+3. All traffic routes through the proxy via the hosts file override
+
+**Result:** All 14 wizard steps completed successfully:
+
+<p align="center">
+  <img src="image/mi-link-creation-results.png" alt="SSMS MI Link wizard — all 14 steps succeeded" width="700" />
+</p>
+
+After completion, the Object Explorer shows:
+- **AG_SQLMILinkDB** availability group with win-client as Primary
+- **SQLMIDB_Link** distributed availability group replicating to MI
+
+### Test 3 — Planned Failover to SQL MI
+
+From SSMS, run the **Failover between SQL Server and SQL Managed Instance** wizard to fail over to the MI:
+
+**Result:** All steps completed successfully:
+
+<p align="center">
+  <img src="image/failover-to-mi-results.png" alt="Planned failover to SQL MI — all steps succeeded" width="700" />
+</p>
+
+The database is now primary on SQL MI with the SQL Server as secondary.
+
+### Test 4 — Planned Failover Back to SQL Server
+
+Run the failover wizard again to fail back to SQL Server:
+
+**Result:** All steps completed successfully:
+
+<p align="center">
+  <img src="image/failover-to-sqlserver-results.png" alt="Planned failover back to SQL Server — all steps succeeded" width="700" />
+</p>
+
+The database is primary on SQL Server again, confirming bidirectional failover works through the proxy.
+
+---
+
+## Success Criteria
+
+| Criteria | Status |
+|---|---|
+| Single static IP presented to external networks | ✅ `10.0.1.10` via Standard LB |
+| MI Link created through proxy (all 14 steps) | ✅ Certificates, AG, distributed AG, join — all succeeded |
+| Planned failover to SQL MI through proxy | ✅ Database promoted on MI |
+| Planned failover back to SQL Server through proxy | ✅ Bidirectional failover confirmed |
+| HAProxy backends healthy on all port ranges | ✅ 5022, 1433, 11000-11999 — all UP / L4OK |
+| Cross-VNet reachability via peering | ✅ win-client in vnet-client reaches LB in vnet-azure |
+| Backend IP changes handled via DNS re-resolution | ✅ HAProxy `hold valid 10s` |
+| No client-side changes when backend IP changes | ✅ Static LB frontend IP unchanged |
+
+The proxy supports the **complete MI Link lifecycle** — link creation, data replication, and bidirectional planned failover — all through a single static IP.
+
+---
+
+## Cleanup
+
+```powershell
+.\scripts\cleanup.ps1 -ResourceGroupName "rg-sqlmi-link-lab-v2"
+```

@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     viewBox="0 0 820 770" width="820" height="770"
+     style="background-color: #ffffff; font-family: 'Segoe UI', Helvetica, Arial, sans-serif;">
+  <!-- content="&lt;mxfile&gt;&lt;diagram name=&quot;Architecture&quot;&gt;&lt;/diagram&gt;&lt;/mxfile&gt;" -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333333"/>
+    </marker>
+    <linearGradient id="azureGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#E8F4FD;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#D0E8F7;stop-opacity:1"/>
+    </linearGradient>
+    <linearGradient id="remoteGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFF4E6;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#FFE8CC;stop-opacity:1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ============================================================ -->
+  <!-- Remote / On-Premises Network (vnet-client) -->
+  <!-- ============================================================ -->
+  <rect x="20" y="20" width="780" height="110" rx="12" ry="12"
+        fill="url(#remoteGrad)" stroke="#FF9900" stroke-width="2" stroke-dasharray="6,3"/>
+  <text x="40" y="46" font-size="13" font-weight="bold" fill="#CC7700">Remote / On-Premises Network</text>
+  <text x="40" y="62" font-size="11" fill="#996600">vnet-client  10.1.0.0/16  (client-subnet 10.1.1.0/24)</text>
+
+  <!-- SQL Server box -->
+  <rect x="260" y="72" width="300" height="46" rx="8" ry="8"
+        fill="#FFFFFF" stroke="#FF9900" stroke-width="1.5"/>
+  <text x="410" y="93" text-anchor="middle" font-size="13" font-weight="bold" fill="#333">SQL Server (on-premises)</text>
+  <text x="410" y="108" text-anchor="middle" font-size="10" fill="#666">Source for MI Link replication</text>
+
+  <!-- ============================================================ -->
+  <!-- VNet Peering arrow -->
+  <!-- ============================================================ -->
+  <line x1="410" y1="130" x2="410" y2="175" stroke="#666" stroke-width="2"
+        stroke-dasharray="6,4" marker-end="url(#arrowhead)"/>
+  <rect x="330" y="140" width="160" height="22" rx="4" ry="4" fill="#F5F5F5" stroke="#CCC" stroke-width="1"/>
+  <text x="410" y="156" text-anchor="middle" font-size="10" fill="#666">VNet Peering (simulates VPN)</text>
+
+  <!-- ============================================================ -->
+  <!-- Azure Network (vnet-azure) -->
+  <!-- ============================================================ -->
+  <rect x="20" y="175" width="780" height="565" rx="12" ry="12"
+        fill="url(#azureGrad)" stroke="#0078D4" stroke-width="2"/>
+  <text x="40" y="200" font-size="13" font-weight="bold" fill="#0078D4">Azure Network</text>
+  <text x="40" y="216" font-size="11" fill="#005A9E">vnet-azure  10.0.0.0/16</text>
+
+  <!-- ============================================================ -->
+  <!-- Load Balancer -->
+  <!-- ============================================================ -->
+  <rect x="230" y="235" width="360" height="64" rx="10" ry="10"
+        fill="#FFFFFF" stroke="#0078D4" stroke-width="2"/>
+  <!-- LB icon circle -->
+  <circle cx="268" cy="267" r="18" fill="#0078D4"/>
+  <text x="268" y="272" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFF">LB</text>
+  <text x="300" y="256" font-size="13" font-weight="bold" fill="#0078D4">Standard Load Balancer (Internal)</text>
+  <text x="300" y="272" font-size="11" fill="#333">Frontend: 10.0.1.10 (static)</text>
+  <text x="300" y="288" font-size="10" fill="#666">HA Ports rule — all TCP traffic</text>
+
+  <!-- Arrow: Peering → LB -->
+  <line x1="410" y1="175" x2="410" y2="235" stroke="#333" stroke-width="2"
+        marker-end="url(#arrowhead)"/>
+
+  <!-- proxy-subnet label -->
+  <rect x="600" y="237" width="180" height="22" rx="4" ry="4" fill="#E1EFFA" stroke="#0078D4" stroke-width="1"/>
+  <text x="690" y="252" text-anchor="middle" font-size="10" fill="#005A9E">proxy-subnet  10.0.1.0/24</text>
+
+  <!-- Arrow: LB → HAProxy -->
+  <line x1="410" y1="299" x2="410" y2="345" stroke="#333" stroke-width="2"
+        marker-end="url(#arrowhead)"/>
+
+  <!-- ============================================================ -->
+  <!-- HAProxy VM -->
+  <!-- ============================================================ -->
+  <rect x="180" y="345" width="480" height="170" rx="10" ry="10"
+        fill="#FFFFFF" stroke="#5C2D91" stroke-width="2"/>
+
+  <!-- HAProxy header row: icon + title -->
+  <rect x="200" y="360" width="32" height="32" rx="6" ry="6" fill="#5C2D91"/>
+  <text x="216" y="381" text-anchor="middle" font-size="11" font-weight="bold" fill="#FFF">HA</text>
+  <text x="244" y="374" font-size="13" font-weight="bold" fill="#5C2D91">HAProxy VM (mode tcp, L4 proxy)</text>
+  <text x="244" y="390" font-size="10" fill="#666">resolvers azure — re-resolves FQDN every 10s</text>
+
+  <!-- Divider line -->
+  <line x1="200" y1="405" x2="640" y2="405" stroke="#E0E0E0" stroke-width="1"/>
+
+  <!-- Port rows — well spaced below divider -->
+  <!-- Port 5022 -->
+  <circle cx="218" cy="430" r="6" fill="#0078D4"/>
+  <text x="232" y="434" font-size="11" font-weight="bold" fill="#333">5022</text>
+  <text x="280" y="434" font-size="11" fill="#555">→  MI FQDN:5022</text>
+  <text x="460" y="434" font-size="10" fill="#888">MI Link / DB mirroring</text>
+
+  <!-- Port 1433 -->
+  <circle cx="218" cy="460" r="6" fill="#008272"/>
+  <text x="232" y="464" font-size="11" font-weight="bold" fill="#333">1433</text>
+  <text x="280" y="464" font-size="11" fill="#555">→  MI FQDN:1433</text>
+  <text x="460" y="464" font-size="10" fill="#888">SQL TDS connections</text>
+
+  <!-- Port 11000-11999 -->
+  <circle cx="218" cy="490" r="6" fill="#E3008C"/>
+  <text x="232" y="494" font-size="11" font-weight="bold" fill="#333">11000-11999</text>
+  <text x="340" y="494" font-size="11" fill="#555">→  MI FQDN</text>
+  <text x="460" y="494" font-size="10" fill="#888">MI redirect ports</text>
+
+  <!-- ============================================================ -->
+  <!-- Stats dashboard callout (positioned left, clear of box) -->
+  <!-- ============================================================ -->
+  <rect x="20" y="380" width="148" height="42" rx="6" ry="6"
+        fill="#FFF8E1" stroke="#F9A825" stroke-width="1.5"/>
+  <text x="94" y="398" text-anchor="middle" font-size="10" font-weight="bold" fill="#F57F17">Stats Dashboard</text>
+  <text x="94" y="412" text-anchor="middle" font-size="10" fill="#666">:8404/stats (internal)</text>
+  <!-- Dashed connector to HAProxy box -->
+  <line x1="168" y1="401" x2="180" y2="410" stroke="#F9A825" stroke-width="1.5"
+        stroke-dasharray="4,2"/>
+
+  <!-- Arrow: HAProxy → MI -->
+  <line x1="410" y1="515" x2="410" y2="560" stroke="#333" stroke-width="2"
+        marker-end="url(#arrowhead)"/>
+
+  <!-- ============================================================ -->
+  <!-- SQL Managed Instance -->
+  <!-- ============================================================ -->
+  <rect x="210" y="560" width="400" height="72" rx="10" ry="10"
+        fill="#FFFFFF" stroke="#0078D4" stroke-width="2"/>
+  <!-- MI icon -->
+  <rect x="228" y="574" width="36" height="36" rx="4" ry="4" fill="#0078D4"/>
+  <text x="246" y="590" text-anchor="middle" font-size="9" font-weight="bold" fill="#FFF">SQL</text>
+  <text x="246" y="602" text-anchor="middle" font-size="9" font-weight="bold" fill="#FFF">MI</text>
+  <text x="278" y="586" font-size="13" font-weight="bold" fill="#0078D4">Azure SQL Managed Instance</text>
+  <text x="278" y="602" font-size="11" fill="#333">FQDN auto-resolved  •  Free tier</text>
+  <text x="278" y="618" font-size="10" fill="#666">Ports 5022 + 1433 + 11000-11999</text>
+
+  <!-- mi-subnet label -->
+  <rect x="600" y="574" width="180" height="22" rx="4" ry="4" fill="#E1EFFA" stroke="#0078D4" stroke-width="1"/>
+  <text x="690" y="589" text-anchor="middle" font-size="10" fill="#005A9E">mi-subnet  10.0.4.0/24</text>
+
+  <!-- ============================================================ -->
+  <!-- Key / Legend -->
+  <!-- ============================================================ -->
+  <rect x="40" y="660" width="740" height="58" rx="8" ry="8"
+        fill="#FAFAFA" stroke="#DDD" stroke-width="1"/>
+  <text x="60" y="682" font-size="11" font-weight="bold" fill="#333">Key:</text>
+  <circle cx="110" cy="678" r="5" fill="#0078D4"/>
+  <text x="120" y="682" font-size="10" fill="#333">Port 5022 (MI Link)</text>
+  <circle cx="260" cy="678" r="5" fill="#008272"/>
+  <text x="270" y="682" font-size="10" fill="#333">Port 1433 (TDS)</text>
+  <circle cx="390" cy="678" r="5" fill="#E3008C"/>
+  <text x="400" y="682" font-size="10" fill="#333">Ports 11000-11999 (Redirect)</text>
+
+  <text x="60" y="706" font-size="10" fill="#666">Static IP 10.0.1.10 never changes — HAProxy re-resolves MI FQDN every 10s, absorbing backend IP changes transparently.</text>
+</svg>
