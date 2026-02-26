@@ -1,0 +1,1634 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.39.26.7824",
+      "templateHash": "14545313854900050451"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Azure region for all resources"
+      }
+    },
+    "adminUsername": {
+      "type": "string",
+      "metadata": {
+        "description": "Admin username for all VMs"
+      }
+    },
+    "adminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Admin password for all VMs"
+      }
+    },
+    "vmSize": {
+      "type": "string",
+      "defaultValue": "Standard_B1s",
+      "metadata": {
+        "description": "VM SKU — B1s is sufficient for this lab"
+      }
+    },
+    "lbFrontendIp": {
+      "type": "string",
+      "defaultValue": "10.0.1.10",
+      "metadata": {
+        "description": "Static frontend IP for the load balancer (must be in proxy-subnet 10.0.1.0/24)"
+      }
+    },
+    "sqlMiName": {
+      "type": "string",
+      "defaultValue": "[format('sqlmi-link-lab-{0}', uniqueString(resourceGroup().id))]",
+      "metadata": {
+        "description": "SQL Managed Instance name (must be globally unique)"
+      }
+    },
+    "entraAdminObjectId": {
+      "type": "string",
+      "defaultValue": "ENTRA_ADMIN_OBJECT_ID_REMOVED",
+      "metadata": {
+        "description": "Entra admin object ID for SQL MI"
+      }
+    },
+    "entraAdminLogin": {
+      "type": "string",
+      "defaultValue": "ENTRA_ADMIN_LOGIN_REMOVED",
+      "metadata": {
+        "description": "Entra admin login (UPN) for SQL MI"
+      }
+    },
+    "tenantId": {
+      "type": "string",
+      "defaultValue": "TENANT_ID_REMOVED",
+      "metadata": {
+        "description": "Tenant ID for Entra authentication"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-networking",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "6857674727145622871"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string"
+            },
+            "azureVnetName": {
+              "type": "string",
+              "defaultValue": "vnet-azure"
+            },
+            "azureVnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.0.0.0/16"
+            },
+            "proxySubnetName": {
+              "type": "string",
+              "defaultValue": "proxy-subnet"
+            },
+            "proxySubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.0.1.0/24"
+            },
+            "backendSubnetName": {
+              "type": "string",
+              "defaultValue": "backend-subnet"
+            },
+            "backendSubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.0.2.0/24"
+            },
+            "miSubnetName": {
+              "type": "string",
+              "defaultValue": "mi-subnet"
+            },
+            "miSubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.0.4.0/24"
+            },
+            "clientVnetName": {
+              "type": "string",
+              "defaultValue": "vnet-client"
+            },
+            "clientVnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.1.0.0/16"
+            },
+            "clientSubnetName": {
+              "type": "string",
+              "defaultValue": "client-subnet"
+            },
+            "clientSubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.1.1.0/24"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2024-05-01",
+              "name": "nsg-proxy",
+              "location": "[parameters('location')]",
+              "properties": {
+                "securityRules": [
+                  {
+                    "name": "Allow-5022-From-Client",
+                    "properties": {
+                      "priority": 100,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "5022",
+                      "sourceAddressPrefix": "[parameters('clientSubnetPrefix')]",
+                      "destinationAddressPrefix": "[parameters('proxySubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Allow-1433-From-Client",
+                    "properties": {
+                      "priority": 105,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "1433",
+                      "sourceAddressPrefix": "[parameters('clientSubnetPrefix')]",
+                      "destinationAddressPrefix": "[parameters('proxySubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Allow-5022-From-LB",
+                    "properties": {
+                      "priority": 110,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "5022",
+                      "sourceAddressPrefix": "AzureLoadBalancer",
+                      "destinationAddressPrefix": "[parameters('proxySubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Allow-1433-From-LB",
+                    "properties": {
+                      "priority": 115,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "1433",
+                      "sourceAddressPrefix": "AzureLoadBalancer",
+                      "destinationAddressPrefix": "[parameters('proxySubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Allow-Redirect-From-Client",
+                    "properties": {
+                      "priority": 120,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "11000-11999",
+                      "sourceAddressPrefix": "[parameters('clientSubnetPrefix')]",
+                      "destinationAddressPrefix": "[parameters('proxySubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Allow-Redirect-From-LB",
+                    "properties": {
+                      "priority": 125,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "11000-11999",
+                      "sourceAddressPrefix": "AzureLoadBalancer",
+                      "destinationAddressPrefix": "[parameters('proxySubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Allow-Stats-From-Client",
+                    "properties": {
+                      "priority": 150,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "8404",
+                      "sourceAddressPrefix": "[parameters('clientSubnetPrefix')]",
+                      "destinationAddressPrefix": "[parameters('proxySubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Allow-SSH-Inbound",
+                    "properties": {
+                      "priority": 200,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "22",
+                      "sourceAddressPrefix": "*",
+                      "destinationAddressPrefix": "*"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2024-05-01",
+              "name": "nsg-backend",
+              "location": "[parameters('location')]",
+              "properties": {
+                "securityRules": [
+                  {
+                    "name": "Allow-5022-From-Proxy",
+                    "properties": {
+                      "priority": 100,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "5022",
+                      "sourceAddressPrefix": "[parameters('proxySubnetPrefix')]",
+                      "destinationAddressPrefix": "[parameters('backendSubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Allow-SSH-Inbound",
+                    "properties": {
+                      "priority": 200,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "22",
+                      "sourceAddressPrefix": "*",
+                      "destinationAddressPrefix": "*"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2024-05-01",
+              "name": "nsg-client",
+              "location": "[parameters('location')]",
+              "properties": {
+                "securityRules": [
+                  {
+                    "name": "Allow-SSH-Inbound",
+                    "properties": {
+                      "priority": 200,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "22",
+                      "sourceAddressPrefix": "*",
+                      "destinationAddressPrefix": "*"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2024-05-01",
+              "name": "nsg-mi",
+              "location": "[parameters('location')]",
+              "properties": {
+                "securityRules": [
+                  {
+                    "name": "Allow-5022-From-Proxy",
+                    "properties": {
+                      "priority": 100,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "5022",
+                      "sourceAddressPrefix": "[parameters('proxySubnetPrefix')]",
+                      "destinationAddressPrefix": "[parameters('miSubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Allow-1433-From-Proxy",
+                    "properties": {
+                      "priority": 105,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "1433",
+                      "sourceAddressPrefix": "[parameters('proxySubnetPrefix')]",
+                      "destinationAddressPrefix": "[parameters('miSubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Allow-Redirect-From-Proxy",
+                    "properties": {
+                      "priority": 107,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "11000-11999",
+                      "sourceAddressPrefix": "[parameters('proxySubnetPrefix')]",
+                      "destinationAddressPrefix": "[parameters('miSubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Allow-Management-Inbound",
+                    "properties": {
+                      "priority": 110,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "9000-9999",
+                      "sourceAddressPrefix": "SqlManagement",
+                      "destinationAddressPrefix": "[parameters('miSubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Allow-HealthProbe-Inbound",
+                    "properties": {
+                      "priority": 120,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "*",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "*",
+                      "sourceAddressPrefix": "AzureLoadBalancer",
+                      "destinationAddressPrefix": "[parameters('miSubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Allow-MI-Internal-Inbound",
+                    "properties": {
+                      "priority": 130,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "*",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "*",
+                      "sourceAddressPrefix": "[parameters('miSubnetPrefix')]",
+                      "destinationAddressPrefix": "[parameters('miSubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Allow-MI-Outbound",
+                    "properties": {
+                      "priority": 100,
+                      "direction": "Outbound",
+                      "access": "Allow",
+                      "protocol": "*",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "*",
+                      "sourceAddressPrefix": "[parameters('miSubnetPrefix')]",
+                      "destinationAddressPrefix": "*"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/publicIPAddresses",
+              "apiVersion": "2024-05-01",
+              "name": "pip-natgw",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Standard"
+              },
+              "properties": {
+                "publicIPAllocationMethod": "Static"
+              }
+            },
+            {
+              "type": "Microsoft.Network/natGateways",
+              "apiVersion": "2024-05-01",
+              "name": "natgw-lab",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Standard"
+              },
+              "properties": {
+                "publicIpAddresses": [
+                  {
+                    "id": "[resourceId('Microsoft.Network/publicIPAddresses', 'pip-natgw')]"
+                  }
+                ],
+                "idleTimeoutInMinutes": 4
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', 'pip-natgw')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/routeTables",
+              "apiVersion": "2024-05-01",
+              "name": "rt-mi-subnet",
+              "location": "[parameters('location')]",
+              "properties": {
+                "disableBgpRoutePropagation": false,
+                "routes": [
+                  {
+                    "name": "mi-subnet-to-vnetlocal",
+                    "properties": {
+                      "addressPrefix": "[parameters('miSubnetPrefix')]",
+                      "nextHopType": "VnetLocal"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2024-05-01",
+              "name": "[parameters('azureVnetName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('azureVnetPrefix')]"
+                  ]
+                },
+                "subnets": [
+                  {
+                    "name": "[parameters('proxySubnetName')]",
+                    "properties": {
+                      "addressPrefix": "[parameters('proxySubnetPrefix')]",
+                      "networkSecurityGroup": {
+                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-proxy')]"
+                      },
+                      "natGateway": {
+                        "id": "[resourceId('Microsoft.Network/natGateways', 'natgw-lab')]"
+                      }
+                    }
+                  },
+                  {
+                    "name": "[parameters('backendSubnetName')]",
+                    "properties": {
+                      "addressPrefix": "[parameters('backendSubnetPrefix')]",
+                      "networkSecurityGroup": {
+                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-backend')]"
+                      },
+                      "natGateway": {
+                        "id": "[resourceId('Microsoft.Network/natGateways', 'natgw-lab')]"
+                      }
+                    }
+                  },
+                  {
+                    "name": "[parameters('miSubnetName')]",
+                    "properties": {
+                      "addressPrefix": "[parameters('miSubnetPrefix')]",
+                      "networkSecurityGroup": {
+                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-mi')]"
+                      },
+                      "routeTable": {
+                        "id": "[resourceId('Microsoft.Network/routeTables', 'rt-mi-subnet')]"
+                      },
+                      "delegations": [
+                        {
+                          "name": "managedInstanceDelegation",
+                          "properties": {
+                            "serviceName": "Microsoft.Sql/managedInstances"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/natGateways', 'natgw-lab')]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-backend')]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-mi')]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-proxy')]",
+                "[resourceId('Microsoft.Network/routeTables', 'rt-mi-subnet')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2024-05-01",
+              "name": "[parameters('clientVnetName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('clientVnetPrefix')]"
+                  ]
+                },
+                "subnets": [
+                  {
+                    "name": "[parameters('clientSubnetName')]",
+                    "properties": {
+                      "addressPrefix": "[parameters('clientSubnetPrefix')]",
+                      "networkSecurityGroup": {
+                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-client')]"
+                      },
+                      "defaultOutboundAccess": true
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-client')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}/{1}', parameters('azureVnetName'), 'peer-azure-to-client')]",
+              "properties": {
+                "remoteVirtualNetwork": {
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('clientVnetName'))]"
+                },
+                "allowVirtualNetworkAccess": true,
+                "allowForwardedTraffic": true,
+                "allowGatewayTransit": false,
+                "useRemoteGateways": false
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('azureVnetName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('clientVnetName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}/{1}', parameters('clientVnetName'), 'peer-client-to-azure')]",
+              "properties": {
+                "remoteVirtualNetwork": {
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('azureVnetName'))]"
+                },
+                "allowVirtualNetworkAccess": true,
+                "allowForwardedTraffic": true,
+                "allowGatewayTransit": false,
+                "useRemoteGateways": false
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('azureVnetName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('clientVnetName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "azureVnetId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks', parameters('azureVnetName'))]"
+            },
+            "azureVnetName": {
+              "type": "string",
+              "value": "[parameters('azureVnetName')]"
+            },
+            "clientVnetId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks', parameters('clientVnetName'))]"
+            },
+            "clientVnetName": {
+              "type": "string",
+              "value": "[parameters('clientVnetName')]"
+            },
+            "proxySubnetId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', parameters('azureVnetName')), '2024-05-01').subnets[0].id]"
+            },
+            "backendSubnetId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', parameters('azureVnetName')), '2024-05-01').subnets[1].id]"
+            },
+            "miSubnetId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', parameters('azureVnetName')), '2024-05-01').subnets[2].id]"
+            },
+            "clientSubnetId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', parameters('clientVnetName')), '2024-05-01').subnets[0].id]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-dns",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "azureVnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-networking'), '2025-04-01').outputs.azureVnetId.value]"
+          },
+          "clientVnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-networking'), '2025-04-01').outputs.clientVnetId.value]"
+          },
+          "initialBackendIp": {
+            "value": "10.0.2.4"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "8875072884352785781"
+            }
+          },
+          "parameters": {
+            "dnsZoneName": {
+              "type": "string",
+              "defaultValue": "fake-sqlmi.database.windows.net"
+            },
+            "recordName": {
+              "type": "string",
+              "defaultValue": "sqlmi-test"
+            },
+            "initialBackendIp": {
+              "type": "string",
+              "defaultValue": "10.0.2.4"
+            },
+            "azureVnetId": {
+              "type": "string"
+            },
+            "clientVnetId": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2024-06-01",
+              "name": "[parameters('dnsZoneName')]",
+              "location": "global"
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2024-06-01",
+              "name": "[format('{0}/{1}', parameters('dnsZoneName'), 'link-to-azure-vnet')]",
+              "location": "global",
+              "properties": {
+                "virtualNetwork": {
+                  "id": "[parameters('azureVnetId')]"
+                },
+                "registrationEnabled": false
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', parameters('dnsZoneName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2024-06-01",
+              "name": "[format('{0}/{1}', parameters('dnsZoneName'), 'link-to-client-vnet')]",
+              "location": "global",
+              "properties": {
+                "virtualNetwork": {
+                  "id": "[parameters('clientVnetId')]"
+                },
+                "registrationEnabled": false
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', parameters('dnsZoneName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/A",
+              "apiVersion": "2024-06-01",
+              "name": "[format('{0}/{1}', parameters('dnsZoneName'), parameters('recordName'))]",
+              "properties": {
+                "ttl": 10,
+                "aRecords": [
+                  {
+                    "ipv4Address": "[parameters('initialBackendIp')]"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', parameters('dnsZoneName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "dnsZoneId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', parameters('dnsZoneName'))]"
+            },
+            "fqdn": {
+              "type": "string",
+              "value": "[format('{0}.{1}', parameters('recordName'), parameters('dnsZoneName'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deploy-networking')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-sql-mi",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "miSubnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-networking'), '2025-04-01').outputs.miSubnetId.value]"
+          },
+          "miName": {
+            "value": "[parameters('sqlMiName')]"
+          },
+          "adminLogin": {
+            "value": "[parameters('adminUsername')]"
+          },
+          "adminPassword": {
+            "value": "[parameters('adminPassword')]"
+          },
+          "entraAdminObjectId": {
+            "value": "[parameters('entraAdminObjectId')]"
+          },
+          "entraAdminLogin": {
+            "value": "[parameters('entraAdminLogin')]"
+          },
+          "tenantId": {
+            "value": "[parameters('tenantId')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "11146812100436973114"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string"
+            },
+            "miSubnetId": {
+              "type": "string"
+            },
+            "miName": {
+              "type": "string",
+              "metadata": {
+                "description": "SQL MI instance name (must be globally unique)"
+              }
+            },
+            "adminLogin": {
+              "type": "string",
+              "metadata": {
+                "description": "SQL MI SQL admin username (required by ARM but Entra-only auth is enforced)"
+              }
+            },
+            "adminPassword": {
+              "type": "securestring",
+              "metadata": {
+                "description": "SQL MI SQL admin password"
+              }
+            },
+            "entraAdminObjectId": {
+              "type": "string",
+              "metadata": {
+                "description": "Entra admin object ID (user or group)"
+              }
+            },
+            "entraAdminLogin": {
+              "type": "string",
+              "metadata": {
+                "description": "Entra admin login (UPN or group name)"
+              }
+            },
+            "tenantId": {
+              "type": "string",
+              "metadata": {
+                "description": "Tenant ID for Entra authentication"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Sql/managedInstances",
+              "apiVersion": "2025-01-01",
+              "name": "[parameters('miName')]",
+              "location": "[parameters('location')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "sku": {
+                "name": "GP_Gen5",
+                "tier": "GeneralPurpose",
+                "family": "Gen5",
+                "capacity": 4
+              },
+              "properties": {
+                "administratorLogin": "[parameters('adminLogin')]",
+                "administratorLoginPassword": "[parameters('adminPassword')]",
+                "administrators": {
+                  "administratorType": "ActiveDirectory",
+                  "azureADOnlyAuthentication": true,
+                  "login": "[parameters('entraAdminLogin')]",
+                  "principalType": "User",
+                  "sid": "[parameters('entraAdminObjectId')]",
+                  "tenantId": "[parameters('tenantId')]"
+                },
+                "subnetId": "[parameters('miSubnetId')]",
+                "storageSizeInGB": 64,
+                "vCores": 4,
+                "licenseType": "LicenseIncluded",
+                "pricingModel": "Freemium",
+                "publicDataEndpointEnabled": false,
+                "zoneRedundant": false,
+                "databaseFormat": "SQLServer2025"
+              }
+            }
+          ],
+          "outputs": {
+            "miId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Sql/managedInstances', parameters('miName'))]"
+            },
+            "miName": {
+              "type": "string",
+              "value": "[parameters('miName')]"
+            },
+            "miFqdn": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Sql/managedInstances', parameters('miName')), '2025-01-01').fullyQualifiedDomainName]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deploy-networking')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-backend-vms",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "backendSubnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-networking'), '2025-04-01').outputs.backendSubnetId.value]"
+          },
+          "adminUsername": {
+            "value": "[parameters('adminUsername')]"
+          },
+          "adminPasswordOrKey": {
+            "value": "[parameters('adminPassword')]"
+          },
+          "authenticationType": {
+            "value": "password"
+          },
+          "vmSize": {
+            "value": "[parameters('vmSize')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "11774795850082213950"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string"
+            },
+            "backendSubnetId": {
+              "type": "string"
+            },
+            "adminUsername": {
+              "type": "string"
+            },
+            "adminPasswordOrKey": {
+              "type": "securestring"
+            },
+            "authenticationType": {
+              "type": "string",
+              "defaultValue": "password",
+              "allowedValues": [
+                "password",
+                "sshPublicKey"
+              ]
+            },
+            "vmSize": {
+              "type": "string",
+              "defaultValue": "Standard_B1s"
+            }
+          },
+          "variables": {
+            "cloudInitScript": "#cloud-config\r\npackage_update: true\r\npackages:\r\n  - socat\r\nwrite_files:\r\n  - path: /etc/systemd/system/socat-listener.service\r\n    content: |\r\n      [Unit]\r\n      Description=Socat TCP 5022 Listener (simulates SQL MI)\r\n      After=network.target\r\n\r\n      [Service]\r\n      ExecStart=/bin/bash -c 'while true; do echo \"Connected to $(hostname)\" | socat - TCP-LISTEN:5022,reuseaddr; done'\r\n      Restart=always\r\n      RestartSec=1\r\n\r\n      [Install]\r\n      WantedBy=multi-user.target\r\nruncmd:\r\n  - systemctl daemon-reload\r\n  - systemctl enable socat-listener\r\n  - systemctl start socat-listener\r\n",
+            "linuxConfiguration": "[if(equals(parameters('authenticationType'), 'sshPublicKey'), createObject('disablePasswordAuthentication', true(), 'ssh', createObject('publicKeys', createArray(createObject('path', format('/home/{0}/.ssh/authorized_keys', parameters('adminUsername')), 'keyData', parameters('adminPasswordOrKey'))))), null())]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/networkInterfaces",
+              "apiVersion": "2024-05-01",
+              "name": "nic-vm-sql-a",
+              "location": "[parameters('location')]",
+              "properties": {
+                "ipConfigurations": [
+                  {
+                    "name": "ipconfig1",
+                    "properties": {
+                      "privateIPAllocationMethod": "Static",
+                      "privateIPAddress": "10.0.2.4",
+                      "subnet": {
+                        "id": "[parameters('backendSubnetId')]"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Compute/virtualMachines",
+              "apiVersion": "2024-07-01",
+              "name": "vm-sql-a",
+              "location": "[parameters('location')]",
+              "properties": {
+                "hardwareProfile": {
+                  "vmSize": "[parameters('vmSize')]"
+                },
+                "osProfile": {
+                  "computerName": "vm-sql-a",
+                  "adminUsername": "[parameters('adminUsername')]",
+                  "adminPassword": "[if(equals(parameters('authenticationType'), 'password'), parameters('adminPasswordOrKey'), null())]",
+                  "linuxConfiguration": "[variables('linuxConfiguration')]",
+                  "customData": "[base64(variables('cloudInitScript'))]"
+                },
+                "storageProfile": {
+                  "imageReference": {
+                    "publisher": "Canonical",
+                    "offer": "0001-com-ubuntu-server-jammy",
+                    "sku": "22_04-lts-gen2",
+                    "version": "latest"
+                  },
+                  "osDisk": {
+                    "createOption": "FromImage",
+                    "managedDisk": {
+                      "storageAccountType": "Standard_LRS"
+                    }
+                  }
+                },
+                "networkProfile": {
+                  "networkInterfaces": [
+                    {
+                      "id": "[resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-sql-a')]"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-sql-a')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/networkInterfaces",
+              "apiVersion": "2024-05-01",
+              "name": "nic-vm-sql-b",
+              "location": "[parameters('location')]",
+              "properties": {
+                "ipConfigurations": [
+                  {
+                    "name": "ipconfig1",
+                    "properties": {
+                      "privateIPAllocationMethod": "Static",
+                      "privateIPAddress": "10.0.2.5",
+                      "subnet": {
+                        "id": "[parameters('backendSubnetId')]"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Compute/virtualMachines",
+              "apiVersion": "2024-07-01",
+              "name": "vm-sql-b",
+              "location": "[parameters('location')]",
+              "properties": {
+                "hardwareProfile": {
+                  "vmSize": "[parameters('vmSize')]"
+                },
+                "osProfile": {
+                  "computerName": "vm-sql-b",
+                  "adminUsername": "[parameters('adminUsername')]",
+                  "adminPassword": "[if(equals(parameters('authenticationType'), 'password'), parameters('adminPasswordOrKey'), null())]",
+                  "linuxConfiguration": "[variables('linuxConfiguration')]",
+                  "customData": "[base64(variables('cloudInitScript'))]"
+                },
+                "storageProfile": {
+                  "imageReference": {
+                    "publisher": "Canonical",
+                    "offer": "0001-com-ubuntu-server-jammy",
+                    "sku": "22_04-lts-gen2",
+                    "version": "latest"
+                  },
+                  "osDisk": {
+                    "createOption": "FromImage",
+                    "managedDisk": {
+                      "storageAccountType": "Standard_LRS"
+                    }
+                  }
+                },
+                "networkProfile": {
+                  "networkInterfaces": [
+                    {
+                      "id": "[resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-sql-b')]"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-sql-b')]"
+              ]
+            }
+          ],
+          "outputs": {
+            "vmAName": {
+              "type": "string",
+              "value": "vm-sql-a"
+            },
+            "vmAPrivateIp": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-sql-a'), '2024-05-01').ipConfigurations[0].properties.privateIPAddress]"
+            },
+            "vmBName": {
+              "type": "string",
+              "value": "vm-sql-b"
+            },
+            "vmBPrivateIp": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-sql-b'), '2024-05-01').ipConfigurations[0].properties.privateIPAddress]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deploy-networking')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-load-balancer",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "proxySubnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-networking'), '2025-04-01').outputs.proxySubnetId.value]"
+          },
+          "frontendIp": {
+            "value": "[parameters('lbFrontendIp')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "11164267883440081765"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string"
+            },
+            "proxySubnetId": {
+              "type": "string"
+            },
+            "frontendIp": {
+              "type": "string",
+              "defaultValue": "10.0.1.10"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/loadBalancers",
+              "apiVersion": "2024-05-01",
+              "name": "lb-sqlmi-proxy",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Standard"
+              },
+              "properties": {
+                "frontendIPConfigurations": [
+                  {
+                    "name": "fe-static-ip",
+                    "properties": {
+                      "privateIPAddress": "[parameters('frontendIp')]",
+                      "privateIPAllocationMethod": "Static",
+                      "subnet": {
+                        "id": "[parameters('proxySubnetId')]"
+                      }
+                    }
+                  }
+                ],
+                "backendAddressPools": [
+                  {
+                    "name": "be-haproxy"
+                  }
+                ],
+                "probes": [
+                  {
+                    "name": "probe-tcp-5022",
+                    "properties": {
+                      "protocol": "Tcp",
+                      "port": 5022,
+                      "intervalInSeconds": 15,
+                      "numberOfProbes": 2,
+                      "probeThreshold": 1
+                    }
+                  }
+                ],
+                "loadBalancingRules": [
+                  {
+                    "name": "rule-ha-ports",
+                    "properties": {
+                      "frontendIPConfiguration": {
+                        "id": "[resourceId('Microsoft.Network/loadBalancers/frontendIPConfigurations', 'lb-sqlmi-proxy', 'fe-static-ip')]"
+                      },
+                      "backendAddressPool": {
+                        "id": "[resourceId('Microsoft.Network/loadBalancers/backendAddressPools', 'lb-sqlmi-proxy', 'be-haproxy')]"
+                      },
+                      "probe": {
+                        "id": "[resourceId('Microsoft.Network/loadBalancers/probes', 'lb-sqlmi-proxy', 'probe-tcp-5022')]"
+                      },
+                      "protocol": "All",
+                      "frontendPort": 0,
+                      "backendPort": 0,
+                      "enableFloatingIP": false,
+                      "idleTimeoutInMinutes": 30,
+                      "loadDistribution": "Default",
+                      "enableTcpReset": true
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "outputs": {
+            "lbName": {
+              "type": "string",
+              "value": "lb-sqlmi-proxy"
+            },
+            "frontendStaticIp": {
+              "type": "string",
+              "value": "[parameters('frontendIp')]"
+            },
+            "lbId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/loadBalancers', 'lb-sqlmi-proxy')]"
+            },
+            "backendPoolId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/loadBalancers', 'lb-sqlmi-proxy'), '2024-05-01').backendAddressPools[0].id]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deploy-networking')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-proxy-vm",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "proxySubnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-networking'), '2025-04-01').outputs.proxySubnetId.value]"
+          },
+          "adminUsername": {
+            "value": "[parameters('adminUsername')]"
+          },
+          "adminPasswordOrKey": {
+            "value": "[parameters('adminPassword')]"
+          },
+          "authenticationType": {
+            "value": "password"
+          },
+          "vmSize": {
+            "value": "[parameters('vmSize')]"
+          },
+          "sqlmiFqdn": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-sql-mi'), '2025-04-01').outputs.miFqdn.value]"
+          },
+          "lbBackendPoolId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-load-balancer'), '2025-04-01').outputs.backendPoolId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "2140277234433088112"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string"
+            },
+            "proxySubnetId": {
+              "type": "string"
+            },
+            "adminUsername": {
+              "type": "string"
+            },
+            "adminPasswordOrKey": {
+              "type": "securestring"
+            },
+            "sqlmiFqdn": {
+              "type": "string",
+              "defaultValue": "sqlmi-test.fake-sqlmi.database.windows.net"
+            },
+            "lbBackendPoolId": {
+              "type": "string",
+              "defaultValue": ""
+            },
+            "authenticationType": {
+              "type": "string",
+              "defaultValue": "password",
+              "allowedValues": [
+                "password",
+                "sshPublicKey"
+              ]
+            },
+            "vmSize": {
+              "type": "string",
+              "defaultValue": "Standard_B1s"
+            }
+          },
+          "variables": {
+            "cloudInitScript": "#cloud-config\r\npackage_update: true\r\npackages:\r\n  - haproxy\r\nwrite_files:\r\n  - path: /etc/haproxy/haproxy.cfg\r\n    content: |\r\n      global\r\n          log /dev/log local0\r\n          maxconn 4096\r\n          stats socket /run/haproxy/admin.sock mode 660 level admin\r\n\r\n      defaults\r\n          log     global\r\n          mode    tcp\r\n          timeout connect 10s\r\n          timeout client  1h\r\n          timeout server  1h\r\n\r\n      resolvers azure\r\n          nameserver dns1 168.63.129.16:53\r\n          resolve_retries 3\r\n          timeout resolve 1s\r\n          hold valid 10s\r\n\r\n      # --- MI Link (database mirroring) ---\r\n      frontend sqlmi_link_frontend\r\n          bind *:5022\r\n          default_backend sqlmi_link_backend\r\n\r\n      backend sqlmi_link_backend\r\n          server sqlmi-link __SQLMI_FQDN__:5022 check resolvers azure resolve-prefer ipv4\r\n\r\n      # --- SQL client connections (TDS) ---\r\n      frontend sqlmi_tds_frontend\r\n          bind *:1433\r\n          default_backend sqlmi_tds_backend\r\n\r\n      backend sqlmi_tds_backend\r\n          server sqlmi-tds __SQLMI_FQDN__:1433 check resolvers azure resolve-prefer ipv4\r\n\r\n      # --- MI redirect ports (connection policy = Redirect) ---\r\n      # Client connects on a specific port in 11000-11999; HAProxy\r\n      # forwards to the same port on MI. Uses 'port 0' so the backend\r\n      # connects on the same port the frontend received.\r\n      frontend sqlmi_redirect_frontend\r\n          bind *:11000-11999\r\n          default_backend sqlmi_redirect_backend\r\n\r\n      backend sqlmi_redirect_backend\r\n          server sqlmi-redir __SQLMI_FQDN__ resolvers azure resolve-prefer ipv4\r\n\r\n      # --- Stats dashboard (internal only, port 8404) ---\r\n      listen stats\r\n          bind *:8404\r\n          mode http\r\n          stats enable\r\n          stats uri /stats\r\n          stats refresh 5s\r\n          stats show-legends\r\n          stats show-node\r\nruncmd:\r\n  - systemctl enable haproxy\r\n  - systemctl restart haproxy\r\n",
+            "cloudInitFinal": "[replace(variables('cloudInitScript'), '__SQLMI_FQDN__', parameters('sqlmiFqdn'))]",
+            "linuxConfiguration": "[if(equals(parameters('authenticationType'), 'sshPublicKey'), createObject('disablePasswordAuthentication', true(), 'ssh', createObject('publicKeys', createArray(createObject('path', format('/home/{0}/.ssh/authorized_keys', parameters('adminUsername')), 'keyData', parameters('adminPasswordOrKey'))))), null())]",
+            "lbBackendPools": "[if(empty(parameters('lbBackendPoolId')), createArray(), createArray(createObject('id', parameters('lbBackendPoolId'))))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/networkInterfaces",
+              "apiVersion": "2024-05-01",
+              "name": "nic-vm-haproxy",
+              "location": "[parameters('location')]",
+              "properties": {
+                "enableIPForwarding": true,
+                "ipConfigurations": [
+                  {
+                    "name": "ipconfig1",
+                    "properties": {
+                      "privateIPAllocationMethod": "Dynamic",
+                      "subnet": {
+                        "id": "[parameters('proxySubnetId')]"
+                      },
+                      "loadBalancerBackendAddressPools": "[variables('lbBackendPools')]"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Compute/virtualMachines",
+              "apiVersion": "2024-07-01",
+              "name": "vm-haproxy",
+              "location": "[parameters('location')]",
+              "properties": {
+                "hardwareProfile": {
+                  "vmSize": "[parameters('vmSize')]"
+                },
+                "osProfile": {
+                  "computerName": "vm-haproxy",
+                  "adminUsername": "[parameters('adminUsername')]",
+                  "adminPassword": "[if(equals(parameters('authenticationType'), 'password'), parameters('adminPasswordOrKey'), null())]",
+                  "linuxConfiguration": "[variables('linuxConfiguration')]",
+                  "customData": "[base64(variables('cloudInitFinal'))]"
+                },
+                "storageProfile": {
+                  "imageReference": {
+                    "publisher": "Canonical",
+                    "offer": "0001-com-ubuntu-server-jammy",
+                    "sku": "22_04-lts-gen2",
+                    "version": "latest"
+                  },
+                  "osDisk": {
+                    "createOption": "FromImage",
+                    "managedDisk": {
+                      "storageAccountType": "Standard_LRS"
+                    }
+                  }
+                },
+                "networkProfile": {
+                  "networkInterfaces": [
+                    {
+                      "id": "[resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-haproxy')]"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-haproxy')]"
+              ]
+            }
+          ],
+          "outputs": {
+            "vmName": {
+              "type": "string",
+              "value": "vm-haproxy"
+            },
+            "nicId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-haproxy')]"
+            },
+            "privateIp": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-haproxy'), '2024-05-01').ipConfigurations[0].properties.privateIPAddress]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deploy-load-balancer')]",
+        "[resourceId('Microsoft.Resources/deployments', 'deploy-networking')]",
+        "[resourceId('Microsoft.Resources/deployments', 'deploy-sql-mi')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-client-vm",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "clientSubnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-networking'), '2025-04-01').outputs.clientSubnetId.value]"
+          },
+          "adminUsername": {
+            "value": "[parameters('adminUsername')]"
+          },
+          "adminPasswordOrKey": {
+            "value": "[parameters('adminPassword')]"
+          },
+          "authenticationType": {
+            "value": "password"
+          },
+          "vmSize": {
+            "value": "[parameters('vmSize')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "6990971870186359064"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string"
+            },
+            "clientSubnetId": {
+              "type": "string"
+            },
+            "adminUsername": {
+              "type": "string"
+            },
+            "adminPasswordOrKey": {
+              "type": "securestring"
+            },
+            "authenticationType": {
+              "type": "string",
+              "defaultValue": "password",
+              "allowedValues": [
+                "password",
+                "sshPublicKey"
+              ]
+            },
+            "vmSize": {
+              "type": "string",
+              "defaultValue": "Standard_B1s"
+            }
+          },
+          "variables": {
+            "cloudInitScript": "#cloud-config\r\npackage_update: true\r\npackages:\r\n  - netcat-openbsd\r\n",
+            "linuxConfiguration": "[if(equals(parameters('authenticationType'), 'sshPublicKey'), createObject('disablePasswordAuthentication', true(), 'ssh', createObject('publicKeys', createArray(createObject('path', format('/home/{0}/.ssh/authorized_keys', parameters('adminUsername')), 'keyData', parameters('adminPasswordOrKey'))))), null())]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/publicIPAddresses",
+              "apiVersion": "2024-05-01",
+              "name": "pip-vm-client",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Standard"
+              },
+              "properties": {
+                "publicIPAllocationMethod": "Static"
+              }
+            },
+            {
+              "type": "Microsoft.Network/networkInterfaces",
+              "apiVersion": "2024-05-01",
+              "name": "nic-vm-client",
+              "location": "[parameters('location')]",
+              "properties": {
+                "ipConfigurations": [
+                  {
+                    "name": "ipconfig1",
+                    "properties": {
+                      "privateIPAllocationMethod": "Dynamic",
+                      "subnet": {
+                        "id": "[parameters('clientSubnetId')]"
+                      },
+                      "publicIPAddress": {
+                        "id": "[resourceId('Microsoft.Network/publicIPAddresses', 'pip-vm-client')]"
+                      }
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', 'pip-vm-client')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Compute/virtualMachines",
+              "apiVersion": "2024-07-01",
+              "name": "vm-client",
+              "location": "[parameters('location')]",
+              "properties": {
+                "hardwareProfile": {
+                  "vmSize": "[parameters('vmSize')]"
+                },
+                "osProfile": {
+                  "computerName": "vm-client",
+                  "adminUsername": "[parameters('adminUsername')]",
+                  "adminPassword": "[if(equals(parameters('authenticationType'), 'password'), parameters('adminPasswordOrKey'), null())]",
+                  "linuxConfiguration": "[variables('linuxConfiguration')]",
+                  "customData": "[base64(variables('cloudInitScript'))]"
+                },
+                "storageProfile": {
+                  "imageReference": {
+                    "publisher": "Canonical",
+                    "offer": "0001-com-ubuntu-server-jammy",
+                    "sku": "22_04-lts-gen2",
+                    "version": "latest"
+                  },
+                  "osDisk": {
+                    "createOption": "FromImage",
+                    "managedDisk": {
+                      "storageAccountType": "Standard_LRS"
+                    }
+                  }
+                },
+                "networkProfile": {
+                  "networkInterfaces": [
+                    {
+                      "id": "[resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-client')]"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-client')]"
+              ]
+            }
+          ],
+          "outputs": {
+            "vmName": {
+              "type": "string",
+              "value": "vm-client"
+            },
+            "publicIp": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', 'pip-vm-client'), '2024-05-01').ipAddress]"
+            },
+            "privateIp": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-client'), '2024-05-01').ipConfigurations[0].properties.privateIPAddress]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deploy-networking')]"
+      ]
+    }
+  ],
+  "outputs": {
+    "lbStaticIp": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-load-balancer'), '2025-04-01').outputs.frontendStaticIp.value]"
+    },
+    "clientPublicIp": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-client-vm'), '2025-04-01').outputs.publicIp.value]"
+    },
+    "sqlmiFqdn": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-sql-mi'), '2025-04-01').outputs.miFqdn.value]"
+    },
+    "sqlmiName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-sql-mi'), '2025-04-01').outputs.miName.value]"
+    },
+    "simulatedFqdn": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-dns'), '2025-04-01').outputs.fqdn.value]"
+    },
+    "backendVmAIp": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-backend-vms'), '2025-04-01').outputs.vmAPrivateIp.value]"
+    },
+    "backendVmBIp": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-backend-vms'), '2025-04-01').outputs.vmBPrivateIp.value]"
+    }
+  }
+}
