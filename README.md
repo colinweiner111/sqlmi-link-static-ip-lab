@@ -1,4 +1,4 @@
-i# SQL MI Link Static IP Validation Lab
+# SQL MI Link Static IP Validation Lab
 
 ## Problem Statement
 
@@ -36,25 +36,7 @@ Private Endpoint for SQL MI only supports port 1433, making it unsuitable for MI
 
 The validated pattern uses an **Internal Standard Load Balancer** + **HAProxy TCP proxy VM**:
 
-```
-Client VM (simulates AWS SQL Server)
-   [vnet-client 10.1.0.0/16]
-        │
-        │ TCP 5022 (via VNet peering)
-        ▼
-   [vnet-azure 10.0.0.0/16]
-Azure Standard Load Balancer (static private IP: 10.0.1.10)
-        │
-        │ TCP 5022
-        ▼
-HAProxy VM (L4 TCP proxy, resolves FQDN dynamically)
-        │
-        │ TCP 5022
-        ▼
-Azure SQL Managed Instance (real, free tier)
-   FQDN: <mi-name>.database.windows.net
-   Subnet: mi-subnet (10.0.4.0/24)
-```
+![SQL MI Link Static IP Architecture](image/sqlmi-link-static-ip-diagram.drawio.svg)
 
 ### Why This Works
 
@@ -154,7 +136,7 @@ Key settings:
 | Resource Group | `rg-sqlmi-link-lab` |
 | Region | `westus3` |
 | Admin Username | `azureuser` |
-| Admin Password | `SqlMiLab2026!` |
+| Admin Password | *(set during deployment — check `deploy.ps1` params)* |
 | LB Static IP | `10.0.1.10` |
 | Client VM Public IP | *(check deployment outputs)* |
 | SQL MI FQDN (real) | *(check deployment outputs — `sqlmiFqdn`)* |
