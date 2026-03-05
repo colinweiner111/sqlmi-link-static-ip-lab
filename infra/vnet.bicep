@@ -53,6 +53,19 @@ resource nsgProxy 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
         }
       }
       {
+        name: 'Allow-1433-From-Client'
+        properties: {
+          priority: 105
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '1433'
+          sourceAddressPrefix: clientSubnetPrefix
+          destinationAddressPrefix: proxySubnetPrefix
+        }
+      }
+      {
         name: 'Allow-5022-From-LB'
         properties: {
           priority: 110
@@ -61,6 +74,19 @@ resource nsgProxy 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
           protocol: 'Tcp'
           sourcePortRange: '*'
           destinationPortRange: '5022'
+          sourceAddressPrefix: 'AzureLoadBalancer'
+          destinationAddressPrefix: proxySubnetPrefix
+        }
+      }
+      {
+        name: 'Allow-1433-From-LB'
+        properties: {
+          priority: 115
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '1433'
           sourceAddressPrefix: 'AzureLoadBalancer'
           destinationAddressPrefix: proxySubnetPrefix
         }
@@ -158,6 +184,19 @@ resource nsgMi 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
           protocol: 'Tcp'
           sourcePortRange: '*'
           destinationPortRange: '5022'
+          sourceAddressPrefix: proxySubnetPrefix
+          destinationAddressPrefix: miSubnetPrefix
+        }
+      }
+      {
+        name: 'Allow-1433-From-Proxy'
+        properties: {
+          priority: 105
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '1433'
           sourceAddressPrefix: proxySubnetPrefix
           destinationAddressPrefix: miSubnetPrefix
         }

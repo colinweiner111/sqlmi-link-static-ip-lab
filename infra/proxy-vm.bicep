@@ -1,5 +1,5 @@
 // ============================================================================
-// HAProxy VM — L4 TCP proxy forwarding port 5022 via FQDN
+// HAProxy VM — L4 TCP proxy forwarding ports 5022 + 1433 via FQDN
 // ============================================================================
 
 param location string
@@ -15,7 +15,7 @@ param authenticationType string = 'password'
 
 param vmSize string = 'Standard_B1s'
 
-// ---- cloud-init: install HAProxy with TCP 5022 forwarding config ----
+// ---- cloud-init: install HAProxy with TCP 5022 + 1433 forwarding config ----
 // Uses __SQLMI_FQDN__ as a placeholder, replaced by Bicep before encoding
 var cloudInitScript = '''#cloud-config
 package_update: true
@@ -41,12 +41,21 @@ write_files:
           timeout resolve 1s
           hold valid 10s
 
-      frontend sqlmi_frontend
+      # --- MI Link (database mirroring) ---
+      frontend sqlmi_link_frontend
           bind *:5022
-          default_backend sqlmi_backend
+          default_backend sqlmi_link_backend
 
-      backend sqlmi_backend
-          server sqlmi __SQLMI_FQDN__:5022 check resolvers azure resolve-prefer ipv4
+      backend sqlmi_link_backend
+          server sqlmi-link __SQLMI_FQDN__:5022 check resolvers azure resolve-prefer ipv4
+
+      # --- SQL client connections (TDS) ---
+      frontend sqlmi_tds_frontend
+          bind *:1433
+          default_backend sqlmi_tds_backend
+
+      backend sqlmi_tds_backend
+          server sqlmi-tds __SQLMI_FQDN__:1433 check resolvers azure resolve-prefer ipv4
 runcmd:
   - systemctl enable haproxy
   - systemctl restart haproxy
