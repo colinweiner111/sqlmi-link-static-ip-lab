@@ -92,6 +92,32 @@ resource nsgProxy 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
         }
       }
       {
+        name: 'Allow-Redirect-From-Client'
+        properties: {
+          priority: 120
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '11000-11999'
+          sourceAddressPrefix: clientSubnetPrefix
+          destinationAddressPrefix: proxySubnetPrefix
+        }
+      }
+      {
+        name: 'Allow-Redirect-From-LB'
+        properties: {
+          priority: 125
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '11000-11999'
+          sourceAddressPrefix: 'AzureLoadBalancer'
+          destinationAddressPrefix: proxySubnetPrefix
+        }
+      }
+      {
         name: 'Allow-SSH-Inbound'
         properties: {
           priority: 200
@@ -197,6 +223,19 @@ resource nsgMi 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
           protocol: 'Tcp'
           sourcePortRange: '*'
           destinationPortRange: '1433'
+          sourceAddressPrefix: proxySubnetPrefix
+          destinationAddressPrefix: miSubnetPrefix
+        }
+      }
+      {
+        name: 'Allow-Redirect-From-Proxy'
+        properties: {
+          priority: 107
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '11000-11999'
           sourceAddressPrefix: proxySubnetPrefix
           destinationAddressPrefix: miSubnetPrefix
         }
