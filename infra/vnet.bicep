@@ -219,6 +219,19 @@ resource nsgMi 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
 }
 
 // ============================================================================
+// Route Table for SQL MI Subnet
+// ============================================================================
+// SQL MI requires a route table associated with its subnet.
+// Service-aided configuration will add the necessary management routes.
+resource rtMi 'Microsoft.Network/routeTables@2024-05-01' = {
+  name: 'rt-mi-subnet'
+  location: location
+  properties: {
+    disableBgpRoutePropagation: false
+  }
+}
+
+// ============================================================================
 // VNets
 // ============================================================================
 
@@ -257,6 +270,9 @@ resource vnetAzure 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           addressPrefix: miSubnetPrefix
           networkSecurityGroup: {
             id: nsgMi.id
+          }
+          routeTable: {
+            id: rtMi.id
           }
           delegations: [
             {
