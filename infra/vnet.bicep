@@ -219,6 +219,38 @@ resource nsgMi 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
 }
 
 // ============================================================================
+// NAT Gateway — Outbound internet for proxy + backend subnets
+// ============================================================================
+// VMs without public IPs need a NAT Gateway for outbound access
+// (apt package installs via cloud-init, etc.)
+resource natGwPip 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
+  name: 'pip-natgw'
+  location: location
+  sku: {
+    name: 'Standard'
+  }
+  properties: {
+    publicIPAllocationMethod: 'Static'
+  }
+}
+
+resource natGw 'Microsoft.Network/natGateways@2024-05-01' = {
+  name: 'natgw-lab'
+  location: location
+  sku: {
+    name: 'Standard'
+  }
+  properties: {
+    publicIpAddresses: [
+      {
+        id: natGwPip.id
+      }
+    ]
+    idleTimeoutInMinutes: 4
+  }
+}
+
+// ============================================================================
 // Route Table for SQL MI Subnet
 // ============================================================================
 // SQL MI requires a route table associated with its subnet.
@@ -253,6 +285,9 @@ resource vnetAzure 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           networkSecurityGroup: {
             id: nsgProxy.id
           }
+          natGateway: {
+            id: natGw.id
+          }
         }
       }
       {
@@ -261,6 +296,9 @@ resource vnetAzure 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           addressPrefix: backendSubnetPrefix
           networkSecurityGroup: {
             id: nsgBackend.id
+          }
+          natGateway: {
+            id: natGw.id
           }
         }
       }
