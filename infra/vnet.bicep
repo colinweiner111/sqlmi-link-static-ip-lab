@@ -254,12 +254,23 @@ resource natGw 'Microsoft.Network/natGateways@2024-05-01' = {
 // Route Table for SQL MI Subnet
 // ============================================================================
 // SQL MI requires a route table associated with its subnet.
-// Service-aided configuration will add the necessary management routes.
+// Service-aided configuration adds management routes automatically.
+// We must include the mi-subnet → VnetLocal route so that redeployments
+// don't conflict with SQL MI's NetworkIntentPolicy requirements.
 resource rtMi 'Microsoft.Network/routeTables@2024-05-01' = {
   name: 'rt-mi-subnet'
   location: location
   properties: {
     disableBgpRoutePropagation: false
+    routes: [
+      {
+        name: 'mi-subnet-to-vnetlocal'
+        properties: {
+          addressPrefix: miSubnetPrefix
+          nextHopType: 'VnetLocal'
+        }
+      }
+    ]
   }
 }
 
