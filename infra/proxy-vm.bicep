@@ -7,7 +7,7 @@ param proxySubnetId string
 param adminUsername string
 @secure()
 param adminPasswordOrKey string
-param sqlmiFqdn string = 'sqlmi-test.fake-sqlmi.database.windows.net'
+param sqlmiFqdn string
 param lbBackendPoolId string = ''
 
 @allowed(['password', 'sshPublicKey'])
