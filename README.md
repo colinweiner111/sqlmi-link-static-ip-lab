@@ -53,9 +53,7 @@ Private Endpoint for SQL MI only supports port 1433, making it unsuitable for MI
 
 ## Lab Environment
 
-This lab deploys a **real Azure SQL Managed Instance (free tier)** behind an HAProxy TCP proxy and Internal Standard LB, proving the static IP pattern works end-to-end.
-
-A simulated backend (2 VMs with socat on 5022 + Private DNS) is also deployed as a fast-validation fallback that doesn't require the 30-60 minute MI provisioning time. The real SQL MI handles all three port ranges (5022, 1433, 11000-11999).
+This lab deploys a **real Azure SQL Managed Instance (free tier)** behind an HAProxy TCP proxy and Internal Standard LB, proving the static IP pattern works end-to-end. The real SQL MI handles all three port ranges (5022, 1433, 11000-11999).
 
 ### Network Layout
 
@@ -71,8 +69,6 @@ The lab uses **two VNets with bidirectional peering** to simulate a cross-networ
 | Load Balancer frontend | vnet-azure | proxy-subnet (10.0.1.0/24) | 10.0.1.10 (static) |
 | HAProxy VM | vnet-azure | proxy-subnet (10.0.1.0/24) | Dynamic |
 | **SQL Managed Instance** | **vnet-azure** | **mi-subnet (10.0.4.0/24)** | **Dynamic (FQDN-resolved)** |
-| Backend VM A (fallback) | vnet-azure | backend-subnet (10.0.2.0/24) | 10.0.2.4 (static) |
-| Backend VM B (fallback) | vnet-azure | backend-subnet (10.0.2.0/24) | 10.0.2.5 (static) |
 | Client VM | vnet-client | client-subnet (10.1.1.0/24) | Dynamic + Public IP |
 
 VNet peering allows the client to reach the LB static IP across the network boundary, simulating VPN reachability.
@@ -87,7 +83,6 @@ VNet peering allows the client to reach the LB static IP across the network boun
 | AzureLoadBalancer | proxy-subnet | 5022 | LB health probes |
 | AzureLoadBalancer | proxy-subnet | 1433 | LB health probes |
 | AzureLoadBalancer | proxy-subnet | 11000-11999 | LB health probes |
-| proxy-subnet | backend-subnet | 5022 | HAProxy → Backend VMs (fallback) |
 | proxy-subnet | mi-subnet | 5022 | HAProxy → SQL MI (MI Link) |
 | proxy-subnet | mi-subnet | 1433 | HAProxy → SQL MI (SQL TDS) |
 | proxy-subnet | mi-subnet | 11000-11999 | HAProxy → SQL MI (redirect) |
@@ -96,9 +91,7 @@ VNet peering allows the client to reach the LB static IP across the network boun
 
 ### DNS
 
-- **Real MI FQDN:** `<mi-name>.database.windows.net` (auto-created by SQL MI)
-- **Simulated zone (fallback):** `fake-sqlmi.database.windows.net` (Private DNS, linked to both VNets)
-- **Simulated record:** `sqlmi-test` → `10.0.2.4` (initial, TTL 10s)
+- **MI FQDN:** `<mi-name>.database.windows.net` (auto-created by SQL MI)
 
 ### HAProxy Configuration
 
@@ -182,25 +175,20 @@ The dashboard shows real-time status of all frontends (5022, 1433, 11000-11999),
 | Admin Password | *(set during deployment — check `deploy.ps1` params)* |
 | LB Static IP | `10.0.1.10` |
 | Client VM Public IP | *(check deployment outputs)* |
-| SQL MI FQDN (real) | *(check deployment outputs — `sqlmiFqdn`)* |
-| SQL MI FQDN (simulated) | `sqlmi-test.fake-sqlmi.database.windows.net` |
-| Backend VM-A IP | `10.0.2.4` |
-| Backend VM-B IP | `10.0.2.5` |
+| SQL MI FQDN | *(check deployment outputs — `sqlmiFqdn`)* |
 | Auth Mode | **Entra-only** (corporate policy) |
 
 ### What Gets Deployed
 
 | Resource | Type | Purpose |
 |---|---|---|
-| vnet-azure | Virtual Network | 10.0.0.0/16 — Azure side (proxy + backend + MI subnets) |
+| vnet-azure | Virtual Network | 10.0.0.0/16 — Azure side (proxy + MI subnets) |
 | vnet-client | Virtual Network | 10.1.0.0/16 — Simulated remote network (client subnet) |
 | peer-azure-to-client / peer-client-to-azure | VNet Peering | Bidirectional connectivity |
-| nsg-proxy / nsg-backend / nsg-mi / nsg-client | NSGs | TCP 5022, 1433, 11000-11999 allow rules |
+| nsg-proxy / nsg-mi / nsg-client | NSGs | TCP 5022, 1433, 11000-11999 allow rules |
 | **SQL Managed Instance (free tier)** | **SQL MI** | **Real MI Link endpoint (ports 5022, 1433, 11000-11999)** |
-| natgw-lab + pip-natgw | NAT Gateway + Public IP | Outbound internet for proxy + backend subnets (cloud-init) |
+| natgw-lab + pip-natgw | NAT Gateway + Public IP | Outbound internet for proxy subnet (cloud-init) |
 | rt-mi-subnet | Route Table | Required route table for SQL MI subnet |
-| fake-sqlmi.database.windows.net | Private DNS Zone | Simulates SQL MI FQDN (fallback testing) |
-| vm-sql-a, vm-sql-b | Linux VMs | Simulated SQL MI fallback (socat on 5022 only) |
 | vm-haproxy | Linux VM | L4 TCP proxy |
 | lb-sqlmi-proxy | Standard Load Balancer | Static IP entry point |
 | vm-client | Linux VM | Test client (with public IP for SSH) |

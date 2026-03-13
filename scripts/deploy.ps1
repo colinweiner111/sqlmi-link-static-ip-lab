@@ -51,20 +51,11 @@ $outputs = $result.properties.outputs
 Write-Host "Load Balancer Static IP : $($outputs.lbStaticIp.value)" -ForegroundColor White
 Write-Host "Client VM Public IP     : $($outputs.clientPublicIp.value)" -ForegroundColor White
 Write-Host "SQL MI FQDN             : $($outputs.sqlmiFqdn.value)" -ForegroundColor White
-Write-Host "Backend VM-A Private IP : $($outputs.backendVmAIp.value)" -ForegroundColor White
-Write-Host "Backend VM-B Private IP : $($outputs.backendVmBIp.value)" -ForegroundColor White
+Write-Host "SQL MI Name             : $($outputs.sqlmiName.value)" -ForegroundColor White
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
-Write-Host "  1. SSH into the client VM:  ssh $AdminUsername@$($outputs.clientPublicIp.value)"
-Write-Host "  2. Test port 5022:          nc -zv $($outputs.lbStaticIp.value) 5022"
-Write-Host "  3. Test port 1433:          nc -zv $($outputs.lbStaticIp.value) 1433"
-Write-Host "  4. Expected: Connection succeeded (HAProxy -> real SQL MI)"
-Write-Host ""
-Write-Host "  For fallback testing (socat VMs + DNS failover):" -ForegroundColor Cyan
-Write-Host "  1. SSH into vm-haproxy and edit /etc/haproxy/haproxy.cfg"
-Write-Host "  2. Change backend FQDN to: sqlmi-test.fake-sqlmi.database.windows.net"
-Write-Host "  3. sudo systemctl restart haproxy"
-Write-Host "  4. From client: nc $($outputs.lbStaticIp.value) 5022  -> 'Connected to vm-sql-a'"
-Write-Host "  5. Switch backend: .\scripts\switch-backend.ps1 -ResourceGroupName $ResourceGroupName -TargetIp 10.0.2.5"
-Write-Host "  6. Wait ~15s, retry:  nc $($outputs.lbStaticIp.value) 5022  -> 'Connected to vm-sql-b'"
+Write-Host "  1. RDP into win-client using its public IP"
+Write-Host "  2. Add hosts file entry: $($outputs.lbStaticIp.value)  $($outputs.sqlmiFqdn.value)"
+Write-Host "  3. Open SSMS and connect to SQL MI via the static IP"
+Write-Host "  4. Test MI Link creation, failover, and failback through the proxy"
 Write-Host ""
