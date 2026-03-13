@@ -5,7 +5,6 @@
 //   - Two VNets with peering (Azure-side + Client-side)
 //   - NSGs with TCP 5022 rules
 //   - Free-tier Azure SQL Managed Instance (real MI, port 5022)
-//   - Simulated backend VMs (fallback for quick testing)
 //   - HAProxy VM (L4 TCP proxy resolving MI FQDN)
 //   - Internal Standard Load Balancer (static private IP)
 //   - Client VM in separate VNet (simulates AWS-side SQL Server)
@@ -52,20 +51,7 @@ module networking 'vnet.bicep' = {
 }
 
 // ============================================================================
-// 2. Private DNS Zone — Simulates SQL MI FQDN (linked to both VNets)
-//    Kept for fallback testing with simulated backend VMs
-// ============================================================================
-module dns 'private-dns.bicep' = {
-  name: 'deploy-dns'
-  params: {
-    azureVnetId: networking.outputs.azureVnetId
-    clientVnetId: networking.outputs.clientVnetId
-    initialBackendIp: '10.0.2.4' // Points to vm-sql-a initially
-  }
-}
-
-// ============================================================================
-// 3. Azure SQL Managed Instance — Free tier (Freemium)
+// 2. Azure SQL Managed Instance — Free tier (Freemium)
 //    Takes 30-60 minutes to provision
 // ============================================================================
 module sqlmi 'sql-mi.bicep' = {
@@ -83,22 +69,7 @@ module sqlmi 'sql-mi.bicep' = {
 }
 
 // ============================================================================
-// 4. Backend VMs — Simulated SQL MI endpoints (fallback for quick testing)
-// ============================================================================
-module backendVms 'backend-vms.bicep' = {
-  name: 'deploy-backend-vms'
-  params: {
-    location: location
-    backendSubnetId: networking.outputs.backendSubnetId
-    adminUsername: adminUsername
-    adminPasswordOrKey: adminPassword
-    authenticationType: 'password'
-    vmSize: vmSize
-  }
-}
-
-// ============================================================================
-// 5. Load Balancer — Static private IP entry point
+// 3. Load Balancer — Static private IP entry point
 // ============================================================================
 module lb 'load-balancer.bicep' = {
   name: 'deploy-load-balancer'
@@ -110,8 +81,7 @@ module lb 'load-balancer.bicep' = {
 }
 
 // ============================================================================
-// 6. HAProxy VM — L4 TCP proxy
-//    Uses the real MI FQDN as backend target
+// 4. HAProxy VM — L4 TCP proxy
 // ============================================================================
 module proxyVm 'proxy-vm.bicep' = {
   name: 'deploy-proxy-vm'
@@ -128,7 +98,7 @@ module proxyVm 'proxy-vm.bicep' = {
 }
 
 // ============================================================================
-// 7. Client VM — Simulates AWS SQL Server
+// 5. Client VM — Simulates on-premises SQL Server
 // ============================================================================
 module clientVm 'client-vm.bicep' = {
   name: 'deploy-client-vm'
@@ -149,6 +119,3 @@ output lbStaticIp string = lb.outputs.frontendStaticIp
 output clientPublicIp string = clientVm.outputs.publicIp
 output sqlmiFqdn string = sqlmi.outputs.miFqdn
 output sqlmiName string = sqlmi.outputs.miName
-output simulatedFqdn string = dns.outputs.fqdn
-output backendVmAIp string = backendVms.outputs.vmAPrivateIp
-output backendVmBIp string = backendVms.outputs.vmBPrivateIp

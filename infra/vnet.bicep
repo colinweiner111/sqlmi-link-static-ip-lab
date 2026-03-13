@@ -1,8 +1,8 @@
 // ============================================================================
 // Networking — Two VNets + Peering + NSGs
 // ============================================================================
-// vnet-azure  (10.0.0.0/16) — Azure side: LB + HAProxy + Backend VMs
-// vnet-client (10.1.0.0/16) — Simulates AWS/remote network: Client VM
+// vnet-azure  (10.0.0.0/16) — Azure side: LB + HAProxy + SQL MI
+// vnet-client (10.1.0.0/16) — Simulates on-premises network: Client VM
 // Peering connects them to simulate cross-network reachability via static IP.
 // ============================================================================
 
@@ -14,9 +14,6 @@ param azureVnetPrefix string = '10.0.0.0/16'
 
 param proxySubnetName string = 'proxy-subnet'
 param proxySubnetPrefix string = '10.0.1.0/24'
-
-param backendSubnetName string = 'backend-subnet'
-param backendSubnetPrefix string = '10.0.2.0/24'
 
 // ---- SQL MI subnet (delegated) ----
 param miSubnetName string = 'mi-subnet'
@@ -128,42 +125,6 @@ resource nsgProxy 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
           destinationPortRange: '8404'
           sourceAddressPrefix: clientSubnetPrefix
           destinationAddressPrefix: proxySubnetPrefix
-        }
-      }
-      {
-        name: 'Allow-SSH-Inbound'
-        properties: {
-          priority: 200
-          direction: 'Inbound'
-          access: 'Allow'
-          protocol: 'Tcp'
-          sourcePortRange: '*'
-          destinationPortRange: '22'
-          sourceAddressPrefix: '*'
-          destinationAddressPrefix: '*'
-        }
-      }
-    ]
-  }
-}
-
-// ---- NSG: Backend Subnet ----
-resource nsgBackend 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
-  name: 'nsg-backend'
-  location: location
-  properties: {
-    securityRules: [
-      {
-        name: 'Allow-5022-From-Proxy'
-        properties: {
-          priority: 100
-          direction: 'Inbound'
-          access: 'Allow'
-          protocol: 'Tcp'
-          sourcePortRange: '*'
-          destinationPortRange: '5022'
-          sourceAddressPrefix: proxySubnetPrefix
-          destinationAddressPrefix: backendSubnetPrefix
         }
       }
       {
@@ -309,9 +270,7 @@ resource nsgMi 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   }
 }
 
-// ============================================================================
-// NAT Gateway — Outbound internet for proxy + backend subnets
-// ============================================================================
+// ---- NAT Gateway — Outbound internet for proxy subnet ----
 // VMs without public IPs need a NAT Gateway for outbound access
 // (apt package installs via cloud-init, etc.)
 resource natGwPip 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
@@ -369,7 +328,7 @@ resource rtMi 'Microsoft.Network/routeTables@2024-05-01' = {
 // VNets
 // ============================================================================
 
-// ---- Azure-side VNet (proxy + backend subnets) ----
+// ---- Azure-side VNet (proxy + MI subnets) ----
 resource vnetAzure 'Microsoft.Network/virtualNetworks@2024-05-01' = {
   name: azureVnetName
   location: location
@@ -386,18 +345,6 @@ resource vnetAzure 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           addressPrefix: proxySubnetPrefix
           networkSecurityGroup: {
             id: nsgProxy.id
-          }
-          natGateway: {
-            id: natGw.id
-          }
-        }
-      }
-      {
-        name: backendSubnetName
-        properties: {
-          addressPrefix: backendSubnetPrefix
-          networkSecurityGroup: {
-            id: nsgBackend.id
           }
           natGateway: {
             id: natGw.id
@@ -495,6 +442,5 @@ output azureVnetName string = vnetAzure.name
 output clientVnetId string = vnetClient.id
 output clientVnetName string = vnetClient.name
 output proxySubnetId string = vnetAzure.properties.subnets[0].id
-output backendSubnetId string = vnetAzure.properties.subnets[1].id
-output miSubnetId string = vnetAzure.properties.subnets[2].id
+output miSubnetId string = vnetAzure.properties.subnets[1].id
 output clientSubnetId string = vnetClient.properties.subnets[0].id
