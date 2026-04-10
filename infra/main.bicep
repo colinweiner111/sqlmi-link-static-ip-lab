@@ -31,14 +31,14 @@ param lbFrontendIp string = '10.0.1.10'
 @description('SQL Managed Instance name (must be globally unique)')
 param sqlMiName string = 'sqlmi-link-lab-${uniqueString(resourceGroup().id)}'
 
-@description('Entra admin object ID for SQL MI')
-param entraAdminObjectId string = 'ENTRA_ADMIN_OBJECT_ID_REMOVED'
+@description('Entra admin object ID for SQL MI (required in lab mode)')
+param entraAdminObjectId string = ''
 
-@description('Entra admin login (UPN) for SQL MI')
-param entraAdminLogin string = 'ENTRA_ADMIN_LOGIN_REMOVED'
+@description('Entra admin login (UPN) for SQL MI (required in lab mode)')
+param entraAdminLogin string = ''
 
-@description('Tenant ID for Entra authentication')
-param tenantId string = 'TENANT_ID_REMOVED'
+@description('Tenant ID for Entra authentication (required in lab mode)')
+param tenantId string = ''
 
 @description('Deployment mode: "lab" deploys the full validation environment including VNets, SQL MI, and client VMs. "existing" deploys only HAProxy + LB into an existing subnet pointing at an existing SQL MI.')
 @allowed(['lab', 'existing'])
