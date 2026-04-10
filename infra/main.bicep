@@ -1,5 +1,5 @@
 // ============================================================================
-// main.bicep — SQL MI Link Static IP Lab
+// main.bicep — SQL MI — Static IP Gateway
 // ============================================================================
 // Deploys the full validation environment:
 //   - Two VNets with peering (Azure-side + Client-side)
@@ -22,8 +22,8 @@ param adminUsername string
 @description('Admin password for all VMs')
 param adminPassword string
 
-@description('VM SKU — B1s is sufficient for this lab')
-param vmSize string = 'Standard_B1s'
+@description('VM SKU for HAProxy and client VMs')
+param vmSize string = 'Standard_D2s_v5'
 
 @description('Static frontend IP for the load balancer (must be in proxy-subnet 10.0.1.0/24)')
 param lbFrontendIp string = '10.0.1.10'
@@ -40,21 +40,41 @@ param entraAdminLogin string = 'ENTRA_ADMIN_LOGIN_REMOVED'
 @description('Tenant ID for Entra authentication')
 param tenantId string = 'TENANT_ID_REMOVED'
 
+@description('Deployment mode: "lab" deploys the full validation environment including VNets, SQL MI, and client VMs. "existing" deploys only HAProxy + LB into an existing subnet pointing at an existing SQL MI.')
+@allowed(['lab', 'existing'])
+param deployMode string = 'lab'
+
+@description('(existing mode only) Resource ID of the subnet to deploy the HAProxy VMs and LB into')
+param existingProxySubnetId string = ''
+
+@description('(existing mode only) FQDN of the existing SQL Managed Instance (e.g. mymi.abc123.database.windows.net)')
+param existingMiFqdn string = ''
+
+@description('(existing mode only) An available static private IP within the existing subnet for the LB frontend')
+param existingLbFrontendIp string = ''
+
+@description('Set to false when the proxy subnet already has outbound internet via Azure Firewall, on-prem routing, or another NAT solution')
+param deployNatGateway bool = true
+
+@description('Set to false to skip deploying the test client VM (useful in existing mode when you already have a test machine)')
+param deployClientVm bool = true
+
 // ============================================================================
-// 1. Networking — Two VNets + Peering + NSGs
+// 1. Networking — Two VNets + Peering + NSGs  (lab mode only)
 // ============================================================================
-module networking 'vnet.bicep' = {
+module networking 'vnet.bicep' = if (deployMode == 'lab') {
   name: 'deploy-networking'
   params: {
     location: location
+    deployNatGateway: deployNatGateway
   }
 }
 
 // ============================================================================
-// 2. Azure SQL Managed Instance — Free tier (Freemium)
+// 2. Azure SQL Managed Instance — Free tier (Freemium)  (lab mode only)
 //    Takes 30-60 minutes to provision
 // ============================================================================
-module sqlmi 'sql-mi.bicep' = {
+module sqlmi 'sql-mi.bicep' = if (deployMode == 'lab') {
   name: 'deploy-sql-mi'
   params: {
     location: location
@@ -75,8 +95,8 @@ module lb 'load-balancer.bicep' = {
   name: 'deploy-load-balancer'
   params: {
     location: location
-    proxySubnetId: networking.outputs.proxySubnetId
-    frontendIp: lbFrontendIp
+    proxySubnetId: deployMode == 'lab' ? networking.outputs.proxySubnetId : existingProxySubnetId
+    frontendIp: deployMode == 'lab' ? lbFrontendIp : existingLbFrontendIp
   }
 }
 
@@ -87,24 +107,25 @@ module proxyVm 'proxy-vm.bicep' = {
   name: 'deploy-proxy-vm'
   params: {
     location: location
-    proxySubnetId: networking.outputs.proxySubnetId
+    proxySubnetId: deployMode == 'lab' ? networking.outputs.proxySubnetId : existingProxySubnetId
     adminUsername: adminUsername
     adminPasswordOrKey: adminPassword
     authenticationType: 'password'
     vmSize: vmSize
-    sqlmiFqdn: sqlmi.outputs.miFqdn
+    instanceCount: 2
+    sqlmiFqdn: deployMode == 'lab' ? sqlmi.outputs.miFqdn : existingMiFqdn
     lbBackendPoolId: lb.outputs.backendPoolId
   }
 }
 
 // ============================================================================
-// 5. Client VM — Simulates on-premises SQL Server
+// 5. Client VM — test client (lab: client-subnet / existing: same subnet as HAProxy)
 // ============================================================================
-module clientVm 'client-vm.bicep' = {
+module clientVm 'client-vm.bicep' = if (deployClientVm) {
   name: 'deploy-client-vm'
   params: {
     location: location
-    clientSubnetId: networking.outputs.clientSubnetId
+    clientSubnetId: deployMode == 'lab' ? networking.outputs.clientSubnetId : existingProxySubnetId
     adminUsername: adminUsername
     adminPasswordOrKey: adminPassword
     authenticationType: 'password'
@@ -116,6 +137,6 @@ module clientVm 'client-vm.bicep' = {
 // Outputs
 // ============================================================================
 output lbStaticIp string = lb.outputs.frontendStaticIp
-output clientPublicIp string = clientVm.outputs.publicIp
-output sqlmiFqdn string = sqlmi.outputs.miFqdn
-output sqlmiName string = sqlmi.outputs.miName
+output clientPublicIp string = deployClientVm ? clientVm.outputs.publicIp : ''
+output sqlmiFqdn string = deployMode == 'lab' ? sqlmi.outputs.miFqdn : existingMiFqdn
+output sqlmiName string = deployMode == 'lab' ? sqlmi.outputs.miName : 'N/A - existing mode'

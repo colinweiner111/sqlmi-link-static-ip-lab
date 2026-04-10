@@ -13,6 +13,11 @@ param lbBackendPoolId string = ''
 @allowed(['password', 'sshPublicKey'])
 param authenticationType string = 'password'
 
+@description('Number of HAProxy VMs to deploy (2 = active/active behind LB)')
+@minValue(1)
+@maxValue(4)
+param instanceCount int = 2
+
 param vmSize string = 'Standard_B1s'
 
 // ---- cloud-init: install HAProxy with TCP 5022 + 1433 + 11000-11999 config ----
@@ -104,8 +109,8 @@ var lbBackendPools = empty(lbBackendPoolId) ? [] : [
   }
 ]
 
-resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
-  name: 'nic-vm-haproxy'
+resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = [for i in range(0, instanceCount): {
+  name: 'nic-vm-haproxy-${i + 1}'
   location: location
   properties: {
     enableIPForwarding: true
@@ -122,17 +127,17 @@ resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
       }
     ]
   }
-}
+}]
 
-resource vm 'Microsoft.Compute/virtualMachines@2024-07-01' = {
-  name: 'vm-haproxy'
+resource vm 'Microsoft.Compute/virtualMachines@2024-07-01' = [for i in range(0, instanceCount): {
+  name: 'vm-haproxy-${i + 1}'
   location: location
   properties: {
     hardwareProfile: {
       vmSize: vmSize
     }
     osProfile: {
-      computerName: 'vm-haproxy'
+      computerName: 'vm-haproxy-${i + 1}'
       adminUsername: adminUsername
       adminPassword: authenticationType == 'password' ? adminPasswordOrKey : null
       linuxConfiguration: linuxConfiguration
@@ -155,14 +160,13 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-07-01' = {
     networkProfile: {
       networkInterfaces: [
         {
-          id: nic.id
+          id: nic[i].id
         }
       ]
     }
   }
-}
+}]
 
 // ---- Outputs ----
-output vmName string = vm.name
-output nicId string = nic.id
-output privateIp string = nic.properties.ipConfigurations[0].properties.privateIPAddress
+output vmNames array = [for i in range(0, instanceCount): vm[i].name]
+output privateIps array = [for i in range(0, instanceCount): nic[i].properties.ipConfigurations[0].properties.privateIPAddress]
