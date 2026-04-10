@@ -8,6 +8,9 @@
 
 param location string
 
+@description('Set to false if the subnet already has outbound internet via Azure Firewall, on-prem routing, or another NAT solution')
+param deployNatGateway bool = true
+
 // ---- Azure-side VNet ----
 param azureVnetName string = 'vnet-azure'
 param azureVnetPrefix string = '10.0.0.0/16'
@@ -273,7 +276,8 @@ resource nsgMi 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
 // ---- NAT Gateway — Outbound internet for proxy subnet ----
 // VMs without public IPs need a NAT Gateway for outbound access
 // (apt package installs via cloud-init, etc.)
-resource natGwPip 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
+// Skip if the subnet already has outbound internet via Azure Firewall or on-prem routing.
+resource natGwPip 'Microsoft.Network/publicIPAddresses@2024-05-01' = if (deployNatGateway) {
   name: 'pip-natgw'
   location: location
   sku: {
@@ -284,7 +288,7 @@ resource natGwPip 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
   }
 }
 
-resource natGw 'Microsoft.Network/natGateways@2024-05-01' = {
+resource natGw 'Microsoft.Network/natGateways@2024-05-01' = if (deployNatGateway) {
   name: 'natgw-lab'
   location: location
   sku: {
@@ -346,9 +350,7 @@ resource vnetAzure 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           networkSecurityGroup: {
             id: nsgProxy.id
           }
-          natGateway: {
-            id: natGw.id
-          }
+          natGateway: deployNatGateway ? { id: natGw.id } : null
         }
       }
       {

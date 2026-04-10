@@ -1,4 +1,37 @@
-# SQL MI Link Static IP Validation Lab
+# SQL MI — Static IP Gateway
+
+## Table of Contents
+
+- [The Challenge](#the-challenge)
+  - [Why Application Gateway Won't Work](#why-application-gateway-wont-work)
+  - [Why Private Endpoint Doesn't Solve This Either](#why-private-endpoint-doesnt-solve-this-either)
+- [Architecture](#architecture)
+  - [Why This Works](#why-this-works)
+- [Lab Environment](#lab-environment)
+  - [Network Layout](#network-layout)
+  - [NSG Rules](#nsg-rules)
+  - [DNS](#dns)
+  - [HAProxy Configuration](#haproxy-configuration)
+  - [HAProxy Stats Dashboard](#haproxy-stats-dashboard)
+- [Deployment](#deployment)
+  - [Prerequisites](#prerequisites)
+  - [1. Clone the Repo](#1-clone-the-repo)
+  - [2. Login to Azure](#2-login-to-azure)
+  - [3. Deploy](#3-deploy)
+    - [Option A — Full Lab](#option-a--full-lab)
+    - [Option B — Existing VNet / Subnet / SQL MI](#option-b--existing-vnet--subnet--sql-mi)
+  - [Current Deployment Details](#current-deployment-details)
+  - [What Gets Deployed](#what-gets-deployed)
+- [Testing](#testing)
+  - [Prerequisites — Hosts File Override](#prerequisites--hosts-file-override)
+  - [Test 1 — HAProxy Backend Health](#test-1--haproxy-backend-health)
+  - [Test 2 — MI Link Creation (SSMS Wizard)](#test-2--mi-link-creation-ssms-wizard)
+  - [Test 3 — Planned Failover to SQL MI](#test-3--planned-failover-to-sql-mi)
+  - [Test 4 — Planned Failover Back to SQL Server](#test-4--planned-failover-back-to-sql-server)
+- [Success Criteria](#success-criteria)
+- [Cleanup](#cleanup)
+
+---
 
 ## The Challenge
 
@@ -152,18 +185,109 @@ The dashboard shows real-time status of all frontends (5022, 1433, 11000-11999),
 
 ### Prerequisites
 
-- Azure CLI installed and logged in (`az login`)
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) installed
+- PowerShell 7+ (or Windows PowerShell 5.1)
 - Contributor access to an Azure subscription
+- [Git](https://git-scm.com/downloads) installed
 
-### Deploy
+> **HAProxy outbound internet requirement:** During provisioning, the HAProxy VMs run `apt-get install haproxy` via cloud-init. The proxy subnet **must** have outbound internet access. One of the following is required:
+> - **NAT Gateway** — deploy with `-DeployNatGateway $true` (default); a new NAT Gateway is created and attached to the subnet
+> - **Azure Firewall / NVA** — ensure outbound `*.ubuntu.com` and `*.launchpad.net` on ports 80/443 are allowed
+> - **On-premises internet routing** — same outbound rules apply: `*.ubuntu.com` and `*.launchpad.net` on ports 80/443 must be reachable from the subnet
+> 
+> If the subnet has no outbound internet, cloud-init will silently fail and HAProxy will not start.
+
+### 1. Clone the Repo
+
+```powershell
+git clone https://github.com/colinweiner111/sqlmi-link-static-ip-lab.git
+cd sqlmi-link-static-ip-lab
+```
+
+### 2. Login to Azure
+
+```powershell
+# Interactive browser login
+az login
+
+# Confirm the correct subscription is active
+az account show --output table
+
+# (Optional) Switch subscriptions if needed
+az account set --subscription "<your-subscription-id-or-name>"
+```
+
+### 3. Deploy
+
+Two deployment modes are supported:
+
+---
+
+#### Option A — Full Lab (default)
+
+Deploys everything: two VNets, SQL MI (free tier), HAProxy VMs, LB, and a test client VM. Use this to stand up the complete validation environment from scratch.
 
 ```powershell
 .\scripts\deploy.ps1 `
     -ResourceGroupName "rg-sqlmi-link-lab-v2" `
     -Location "westcentralus" `
     -AdminUsername "azureuser" `
-    -AdminPassword (ConvertTo-SecureString "YourP@ssword123!" -AsPlainText -Force)
+    -AdminPassword (ConvertTo-SecureString "YourP@ssword123!" -AsPlainText -Force) `
+    -VmSize "Standard_D2s_v5"              # optional — default is Standard_D2s_v5
 ```
+
+---
+
+#### Option B — Existing VNet / Subnet / SQL MI
+
+Deploys **only** the HAProxy VMs, Load Balancer, and a test client VM into an existing subnet pointing at an existing SQL MI. Use this in customer environments where the VNet and SQL MI are already in place.
+
+**Step 1 — Get your existing resource details:**
+
+```powershell
+# Get the subnet resource ID
+az network vnet subnet show `
+    --resource-group <your-rg> `
+    --vnet-name <your-vnet> `
+    --name <your-subnet> `
+    --query id -o tsv
+
+# Get the SQL MI FQDN
+az sql mi list `
+    --resource-group <your-rg> `
+    --query "[].fullyQualifiedDomainName" -o tsv
+```
+
+> **`-LbFrontendIp`** — Choose any unused static IP from the proxy subnet's address range (e.g. `10.1.2.50`). Avoid the first four and last addresses reserved by Azure.
+
+**Step 2 — Deploy:**
+
+```powershell
+.\scripts\deploy.ps1 `
+    -ResourceGroupName "<your-rg>" `
+    -Location "<your-region>" `
+    -AdminUsername "azureuser" `
+    -AdminPassword (ConvertTo-SecureString "YourP@ssword123!" -AsPlainText -Force) `
+    -DeployMode existing `
+    -ExistingProxySubnetId "/subscriptions/<subscription-id>/resourceGroups/<rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/<subnet>" `
+    -ExistingMiFqdn "<mi-name>.<unique-id>.database.windows.net" `
+    -LbFrontendIp "<available-static-ip-in-your-subnet>" `
+    -DeployNatGateway $false `
+    -DeployClientVm $false `
+    -VmSize "Standard_D2s_v5"
+```
+
+> **`-DeployNatGateway`** — Set to `$false` if the subnet already has outbound internet via Azure Firewall, on-premises routing, or an existing NAT Gateway. Set to `$true` (default) to deploy a new NAT Gateway alongside the HAProxy VMs. HAProxy requires outbound internet during provisioning to `apt-get install haproxy`.
+
+**What gets deployed in existing mode:**
+
+| Resource | Purpose |
+|---|---|
+| `lb-sqlmi-proxy` | Standard LB with your chosen static frontend IP |
+| `vm-haproxy-1`, `vm-haproxy-2` | Two HAProxy VMs in active/active — both in LB backend pool |
+| `vm-client` | Linux test client with public IP for SSH + `netcat` testing *(skipped if `-DeployClientVm $false`)* |
+
+---
 
 ### Current Deployment Details
 
