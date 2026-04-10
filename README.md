@@ -304,19 +304,30 @@ az sql mi list `
 
 ### What Gets Deployed
 
+**Option A — Full Lab**
+
 | Resource | Type | Purpose |
 |---|---|---|
 | vnet-azure | Virtual Network | 10.0.0.0/16 — Azure side (proxy + MI subnets) |
 | vnet-client | Virtual Network | 10.1.0.0/16 — Simulated remote network (client subnet) |
 | peer-azure-to-client / peer-client-to-azure | VNet Peering | Bidirectional connectivity |
 | nsg-proxy / nsg-mi / nsg-client | NSGs | TCP 5022, 1433, 11000-11999 allow rules |
-| **SQL Managed Instance (free tier)** | **SQL MI** | **Real MI Link endpoint (ports 5022, 1433, 11000-11999)** |
+| **SQL Managed Instance (free tier)** | **SQL MI** | **Real MI endpoint (ports 5022, 1433, 11000-11999)** |
 | natgw-lab + pip-natgw | NAT Gateway + Public IP | Outbound internet for proxy subnet (cloud-init) |
-| rt-mi-subnet | Route Table | Required route table for SQL MI subnet |
-| vm-haproxy | Linux VM | L4 TCP proxy |
+| rt-mi-subnet | Route Table | Required for SQL MI subnet |
 | lb-sqlmi-proxy | Standard Load Balancer | Static IP entry point |
+| vm-haproxy-1, vm-haproxy-2 | Linux VMs | L4 TCP proxy (active/active) |
 | vm-client | Linux VM | Test client (with public IP for SSH) |
-| win-client | Windows VM | Test client with SSMS (Static Public IP for RDP) |
+| win-client | Windows VM | Test client with SSMS (static public IP for RDP) |
+
+**Option B — BYO Existing VNet / Subnet / SQL MI**
+
+| Resource | Type | Purpose |
+|---|---|---|
+| lb-sqlmi-proxy | Standard Load Balancer | Static IP entry point in your existing subnet |
+| vm-haproxy-1, vm-haproxy-2 | Linux VMs | L4 TCP proxy (active/active) |
+| nat-gw + pip-natgw | NAT Gateway + Public IP | Outbound internet for HAProxy cloud-init *(skipped if `-DeployNatGateway $false`)* |
+| vm-client | Linux VM | Test client for SSH + netcat validation *(skipped if `-DeployClientVm $false`)* |
 
 ---
 
