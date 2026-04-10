@@ -19,7 +19,7 @@ param miName string
 param adminLogin string
 
 @secure()
-@description('SQL MI SQL admin password')
+@description('SQL MI SQL admin password (required by ARM but disabled — Entra-only auth is enforced)')
 param adminPassword string
 
 @description('Entra admin object ID (user or group)')

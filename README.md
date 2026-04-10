@@ -223,14 +223,14 @@ Two deployment modes are supported:
 
 ---
 
-#### Option A — Full Lab (default)
+#### Option A — Full Lab
 
 Deploys everything: two VNets, SQL MI (free tier), HAProxy VMs, LB, and a test client VM. Use this to stand up the complete validation environment from scratch.
 
 ```powershell
 .\scripts\deploy.ps1 `
-    -ResourceGroupName "rg-sqlmi-link-lab-v2" `
-    -Location "westcentralus" `
+    -ResourceGroupName "<your-rg>" `
+    -Location "<your-region>" `
     -AdminUsername "azureuser" `
     -AdminPassword (ConvertTo-SecureString "YourP@ssword123!" -AsPlainText -Force) `
     -EntraAdminObjectId "<your-entra-admin-object-id>" `
