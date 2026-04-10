@@ -240,7 +240,7 @@ Deploys everything: two VNets, SQL MI (free tier), HAProxy VMs, LB, and a test c
 
 #### Option B — BYO Existing VNet / Subnet / SQL MI
 
-Deploys **only** the HAProxy VMs, Load Balancer, and a test client VM into an existing subnet pointing at an existing SQL MI. Use this in customer environments where the VNet and SQL MI are already in place.
+Deploys **only** the HAProxy VMs and Load Balancer into an existing subnet pointing at an existing SQL MI. Use this in customer environments where the VNet and SQL MI are already in place.
 
 **Step 1 — Get your existing resource details:**
 
