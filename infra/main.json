@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.39.26.7824",
-      "templateHash": "14545313854900050451"
+      "version": "0.41.2.15936",
+      "templateHash": "16266037182195849677"
     }
   },
   "parameters": {
@@ -30,9 +30,9 @@
     },
     "vmSize": {
       "type": "string",
-      "defaultValue": "Standard_B1s",
+      "defaultValue": "Standard_D2s_v5",
       "metadata": {
-        "description": "VM SKU — B1s is sufficient for this lab"
+        "description": "VM SKU for HAProxy and client VMs"
       }
     },
     "lbFrontendIp": {
@@ -51,28 +51,75 @@
     },
     "entraAdminObjectId": {
       "type": "string",
-      "defaultValue": "ENTRA_ADMIN_OBJECT_ID_REMOVED",
+      "defaultValue": "",
       "metadata": {
-        "description": "Entra admin object ID for SQL MI"
+        "description": "Entra admin object ID for SQL MI (required in lab mode)"
       }
     },
     "entraAdminLogin": {
       "type": "string",
-      "defaultValue": "ENTRA_ADMIN_LOGIN_REMOVED",
+      "defaultValue": "",
       "metadata": {
-        "description": "Entra admin login (UPN) for SQL MI"
+        "description": "Entra admin login (UPN) for SQL MI (required in lab mode)"
       }
     },
     "tenantId": {
       "type": "string",
-      "defaultValue": "TENANT_ID_REMOVED",
+      "defaultValue": "",
       "metadata": {
-        "description": "Tenant ID for Entra authentication"
+        "description": "Tenant ID for Entra authentication (required in lab mode)"
+      }
+    },
+    "deployMode": {
+      "type": "string",
+      "defaultValue": "lab",
+      "allowedValues": [
+        "lab",
+        "existing"
+      ],
+      "metadata": {
+        "description": "Deployment mode: \"lab\" deploys the full validation environment including VNets, SQL MI, and client VMs. \"existing\" deploys only HAProxy + LB into an existing subnet pointing at an existing SQL MI."
+      }
+    },
+    "existingProxySubnetId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "(existing mode only) Resource ID of the subnet to deploy the HAProxy VMs and LB into"
+      }
+    },
+    "existingMiFqdn": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "(existing mode only) FQDN of the existing SQL Managed Instance (e.g. mymi.abc123.database.windows.net)"
+      }
+    },
+    "existingLbFrontendIp": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "(existing mode only) An available static private IP within the existing subnet for the LB frontend"
+      }
+    },
+    "deployNatGateway": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Set to false when the proxy subnet already has outbound internet via Azure Firewall, on-prem routing, or another NAT solution"
+      }
+    },
+    "deployClientVm": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Set to false to skip deploying the test client VM (useful in existing mode when you already have a test machine)"
       }
     }
   },
   "resources": [
     {
+      "condition": "[equals(parameters('deployMode'), 'lab')]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "deploy-networking",
@@ -84,6 +131,9 @@
         "parameters": {
           "location": {
             "value": "[parameters('location')]"
+          },
+          "deployNatGateway": {
+            "value": "[parameters('deployNatGateway')]"
           }
         },
         "template": {
@@ -92,13 +142,20 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "6857674727145622871"
+              "version": "0.41.2.15936",
+              "templateHash": "12431690748731816451"
             }
           },
           "parameters": {
             "location": {
               "type": "string"
+            },
+            "deployNatGateway": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Set to false if the subnet already has outbound internet via Azure Firewall, on-prem routing, or another NAT solution"
+              }
             },
             "azureVnetName": {
               "type": "string",
@@ -115,14 +172,6 @@
             "proxySubnetPrefix": {
               "type": "string",
               "defaultValue": "10.0.1.0/24"
-            },
-            "backendSubnetName": {
-              "type": "string",
-              "defaultValue": "backend-subnet"
-            },
-            "backendSubnetPrefix": {
-              "type": "string",
-              "defaultValue": "10.0.2.0/24"
             },
             "miSubnetName": {
               "type": "string",
@@ -267,42 +316,6 @@
             {
               "type": "Microsoft.Network/networkSecurityGroups",
               "apiVersion": "2024-05-01",
-              "name": "nsg-backend",
-              "location": "[parameters('location')]",
-              "properties": {
-                "securityRules": [
-                  {
-                    "name": "Allow-5022-From-Proxy",
-                    "properties": {
-                      "priority": 100,
-                      "direction": "Inbound",
-                      "access": "Allow",
-                      "protocol": "Tcp",
-                      "sourcePortRange": "*",
-                      "destinationPortRange": "5022",
-                      "sourceAddressPrefix": "[parameters('proxySubnetPrefix')]",
-                      "destinationAddressPrefix": "[parameters('backendSubnetPrefix')]"
-                    }
-                  },
-                  {
-                    "name": "Allow-SSH-Inbound",
-                    "properties": {
-                      "priority": 200,
-                      "direction": "Inbound",
-                      "access": "Allow",
-                      "protocol": "Tcp",
-                      "sourcePortRange": "*",
-                      "destinationPortRange": "22",
-                      "sourceAddressPrefix": "*",
-                      "destinationAddressPrefix": "*"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "type": "Microsoft.Network/networkSecurityGroups",
-              "apiVersion": "2024-05-01",
               "name": "nsg-client",
               "location": "[parameters('location')]",
               "properties": {
@@ -425,6 +438,7 @@
               }
             },
             {
+              "condition": "[parameters('deployNatGateway')]",
               "type": "Microsoft.Network/publicIPAddresses",
               "apiVersion": "2024-05-01",
               "name": "pip-natgw",
@@ -437,6 +451,7 @@
               }
             },
             {
+              "condition": "[parameters('deployNatGateway')]",
               "type": "Microsoft.Network/natGateways",
               "apiVersion": "2024-05-01",
               "name": "natgw-lab",
@@ -493,21 +508,7 @@
                       "networkSecurityGroup": {
                         "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-proxy')]"
                       },
-                      "natGateway": {
-                        "id": "[resourceId('Microsoft.Network/natGateways', 'natgw-lab')]"
-                      }
-                    }
-                  },
-                  {
-                    "name": "[parameters('backendSubnetName')]",
-                    "properties": {
-                      "addressPrefix": "[parameters('backendSubnetPrefix')]",
-                      "networkSecurityGroup": {
-                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-backend')]"
-                      },
-                      "natGateway": {
-                        "id": "[resourceId('Microsoft.Network/natGateways', 'natgw-lab')]"
-                      }
+                      "natGateway": "[if(parameters('deployNatGateway'), createObject('id', resourceId('Microsoft.Network/natGateways', 'natgw-lab')), null())]"
                     }
                   },
                   {
@@ -534,7 +535,6 @@
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Network/natGateways', 'natgw-lab')]",
-                "[resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-backend')]",
                 "[resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-mi')]",
                 "[resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-proxy')]",
                 "[resourceId('Microsoft.Network/routeTables', 'rt-mi-subnet')]"
@@ -626,13 +626,9 @@
               "type": "string",
               "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', parameters('azureVnetName')), '2024-05-01').subnets[0].id]"
             },
-            "backendSubnetId": {
-              "type": "string",
-              "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', parameters('azureVnetName')), '2024-05-01').subnets[1].id]"
-            },
             "miSubnetId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', parameters('azureVnetName')), '2024-05-01').subnets[2].id]"
+              "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', parameters('azureVnetName')), '2024-05-01').subnets[1].id]"
             },
             "clientSubnetId": {
               "type": "string",
@@ -643,126 +639,7 @@
       }
     },
     {
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2025-04-01",
-      "name": "deploy-dns",
-      "properties": {
-        "expressionEvaluationOptions": {
-          "scope": "inner"
-        },
-        "mode": "Incremental",
-        "parameters": {
-          "azureVnetId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-networking'), '2025-04-01').outputs.azureVnetId.value]"
-          },
-          "clientVnetId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-networking'), '2025-04-01').outputs.clientVnetId.value]"
-          },
-          "initialBackendIp": {
-            "value": "10.0.2.4"
-          }
-        },
-        "template": {
-          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-          "contentVersion": "1.0.0.0",
-          "metadata": {
-            "_generator": {
-              "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "8875072884352785781"
-            }
-          },
-          "parameters": {
-            "dnsZoneName": {
-              "type": "string",
-              "defaultValue": "fake-sqlmi.database.windows.net"
-            },
-            "recordName": {
-              "type": "string",
-              "defaultValue": "sqlmi-test"
-            },
-            "initialBackendIp": {
-              "type": "string",
-              "defaultValue": "10.0.2.4"
-            },
-            "azureVnetId": {
-              "type": "string"
-            },
-            "clientVnetId": {
-              "type": "string"
-            }
-          },
-          "resources": [
-            {
-              "type": "Microsoft.Network/privateDnsZones",
-              "apiVersion": "2024-06-01",
-              "name": "[parameters('dnsZoneName')]",
-              "location": "global"
-            },
-            {
-              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
-              "apiVersion": "2024-06-01",
-              "name": "[format('{0}/{1}', parameters('dnsZoneName'), 'link-to-azure-vnet')]",
-              "location": "global",
-              "properties": {
-                "virtualNetwork": {
-                  "id": "[parameters('azureVnetId')]"
-                },
-                "registrationEnabled": false
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Network/privateDnsZones', parameters('dnsZoneName'))]"
-              ]
-            },
-            {
-              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
-              "apiVersion": "2024-06-01",
-              "name": "[format('{0}/{1}', parameters('dnsZoneName'), 'link-to-client-vnet')]",
-              "location": "global",
-              "properties": {
-                "virtualNetwork": {
-                  "id": "[parameters('clientVnetId')]"
-                },
-                "registrationEnabled": false
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Network/privateDnsZones', parameters('dnsZoneName'))]"
-              ]
-            },
-            {
-              "type": "Microsoft.Network/privateDnsZones/A",
-              "apiVersion": "2024-06-01",
-              "name": "[format('{0}/{1}', parameters('dnsZoneName'), parameters('recordName'))]",
-              "properties": {
-                "ttl": 10,
-                "aRecords": [
-                  {
-                    "ipv4Address": "[parameters('initialBackendIp')]"
-                  }
-                ]
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Network/privateDnsZones', parameters('dnsZoneName'))]"
-              ]
-            }
-          ],
-          "outputs": {
-            "dnsZoneId": {
-              "type": "string",
-              "value": "[resourceId('Microsoft.Network/privateDnsZones', parameters('dnsZoneName'))]"
-            },
-            "fqdn": {
-              "type": "string",
-              "value": "[format('{0}.{1}', parameters('recordName'), parameters('dnsZoneName'))]"
-            }
-          }
-        }
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'deploy-networking')]"
-      ]
-    },
-    {
+      "condition": "[equals(parameters('deployMode'), 'lab')]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "deploy-sql-mi",
@@ -803,8 +680,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "11146812100436973114"
+              "version": "0.41.2.15936",
+              "templateHash": "8987192711455844257"
             }
           },
           "parameters": {
@@ -911,225 +788,6 @@
     {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
-      "name": "deploy-backend-vms",
-      "properties": {
-        "expressionEvaluationOptions": {
-          "scope": "inner"
-        },
-        "mode": "Incremental",
-        "parameters": {
-          "location": {
-            "value": "[parameters('location')]"
-          },
-          "backendSubnetId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-networking'), '2025-04-01').outputs.backendSubnetId.value]"
-          },
-          "adminUsername": {
-            "value": "[parameters('adminUsername')]"
-          },
-          "adminPasswordOrKey": {
-            "value": "[parameters('adminPassword')]"
-          },
-          "authenticationType": {
-            "value": "password"
-          },
-          "vmSize": {
-            "value": "[parameters('vmSize')]"
-          }
-        },
-        "template": {
-          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-          "contentVersion": "1.0.0.0",
-          "metadata": {
-            "_generator": {
-              "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "11774795850082213950"
-            }
-          },
-          "parameters": {
-            "location": {
-              "type": "string"
-            },
-            "backendSubnetId": {
-              "type": "string"
-            },
-            "adminUsername": {
-              "type": "string"
-            },
-            "adminPasswordOrKey": {
-              "type": "securestring"
-            },
-            "authenticationType": {
-              "type": "string",
-              "defaultValue": "password",
-              "allowedValues": [
-                "password",
-                "sshPublicKey"
-              ]
-            },
-            "vmSize": {
-              "type": "string",
-              "defaultValue": "Standard_B1s"
-            }
-          },
-          "variables": {
-            "cloudInitScript": "#cloud-config\r\npackage_update: true\r\npackages:\r\n  - socat\r\nwrite_files:\r\n  - path: /etc/systemd/system/socat-listener.service\r\n    content: |\r\n      [Unit]\r\n      Description=Socat TCP 5022 Listener (simulates SQL MI)\r\n      After=network.target\r\n\r\n      [Service]\r\n      ExecStart=/bin/bash -c 'while true; do echo \"Connected to $(hostname)\" | socat - TCP-LISTEN:5022,reuseaddr; done'\r\n      Restart=always\r\n      RestartSec=1\r\n\r\n      [Install]\r\n      WantedBy=multi-user.target\r\nruncmd:\r\n  - systemctl daemon-reload\r\n  - systemctl enable socat-listener\r\n  - systemctl start socat-listener\r\n",
-            "linuxConfiguration": "[if(equals(parameters('authenticationType'), 'sshPublicKey'), createObject('disablePasswordAuthentication', true(), 'ssh', createObject('publicKeys', createArray(createObject('path', format('/home/{0}/.ssh/authorized_keys', parameters('adminUsername')), 'keyData', parameters('adminPasswordOrKey'))))), null())]"
-          },
-          "resources": [
-            {
-              "type": "Microsoft.Network/networkInterfaces",
-              "apiVersion": "2024-05-01",
-              "name": "nic-vm-sql-a",
-              "location": "[parameters('location')]",
-              "properties": {
-                "ipConfigurations": [
-                  {
-                    "name": "ipconfig1",
-                    "properties": {
-                      "privateIPAllocationMethod": "Static",
-                      "privateIPAddress": "10.0.2.4",
-                      "subnet": {
-                        "id": "[parameters('backendSubnetId')]"
-                      }
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "type": "Microsoft.Compute/virtualMachines",
-              "apiVersion": "2024-07-01",
-              "name": "vm-sql-a",
-              "location": "[parameters('location')]",
-              "properties": {
-                "hardwareProfile": {
-                  "vmSize": "[parameters('vmSize')]"
-                },
-                "osProfile": {
-                  "computerName": "vm-sql-a",
-                  "adminUsername": "[parameters('adminUsername')]",
-                  "adminPassword": "[if(equals(parameters('authenticationType'), 'password'), parameters('adminPasswordOrKey'), null())]",
-                  "linuxConfiguration": "[variables('linuxConfiguration')]",
-                  "customData": "[base64(variables('cloudInitScript'))]"
-                },
-                "storageProfile": {
-                  "imageReference": {
-                    "publisher": "Canonical",
-                    "offer": "0001-com-ubuntu-server-jammy",
-                    "sku": "22_04-lts-gen2",
-                    "version": "latest"
-                  },
-                  "osDisk": {
-                    "createOption": "FromImage",
-                    "managedDisk": {
-                      "storageAccountType": "Standard_LRS"
-                    }
-                  }
-                },
-                "networkProfile": {
-                  "networkInterfaces": [
-                    {
-                      "id": "[resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-sql-a')]"
-                    }
-                  ]
-                }
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-sql-a')]"
-              ]
-            },
-            {
-              "type": "Microsoft.Network/networkInterfaces",
-              "apiVersion": "2024-05-01",
-              "name": "nic-vm-sql-b",
-              "location": "[parameters('location')]",
-              "properties": {
-                "ipConfigurations": [
-                  {
-                    "name": "ipconfig1",
-                    "properties": {
-                      "privateIPAllocationMethod": "Static",
-                      "privateIPAddress": "10.0.2.5",
-                      "subnet": {
-                        "id": "[parameters('backendSubnetId')]"
-                      }
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "type": "Microsoft.Compute/virtualMachines",
-              "apiVersion": "2024-07-01",
-              "name": "vm-sql-b",
-              "location": "[parameters('location')]",
-              "properties": {
-                "hardwareProfile": {
-                  "vmSize": "[parameters('vmSize')]"
-                },
-                "osProfile": {
-                  "computerName": "vm-sql-b",
-                  "adminUsername": "[parameters('adminUsername')]",
-                  "adminPassword": "[if(equals(parameters('authenticationType'), 'password'), parameters('adminPasswordOrKey'), null())]",
-                  "linuxConfiguration": "[variables('linuxConfiguration')]",
-                  "customData": "[base64(variables('cloudInitScript'))]"
-                },
-                "storageProfile": {
-                  "imageReference": {
-                    "publisher": "Canonical",
-                    "offer": "0001-com-ubuntu-server-jammy",
-                    "sku": "22_04-lts-gen2",
-                    "version": "latest"
-                  },
-                  "osDisk": {
-                    "createOption": "FromImage",
-                    "managedDisk": {
-                      "storageAccountType": "Standard_LRS"
-                    }
-                  }
-                },
-                "networkProfile": {
-                  "networkInterfaces": [
-                    {
-                      "id": "[resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-sql-b')]"
-                    }
-                  ]
-                }
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-sql-b')]"
-              ]
-            }
-          ],
-          "outputs": {
-            "vmAName": {
-              "type": "string",
-              "value": "vm-sql-a"
-            },
-            "vmAPrivateIp": {
-              "type": "string",
-              "value": "[reference(resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-sql-a'), '2024-05-01').ipConfigurations[0].properties.privateIPAddress]"
-            },
-            "vmBName": {
-              "type": "string",
-              "value": "vm-sql-b"
-            },
-            "vmBPrivateIp": {
-              "type": "string",
-              "value": "[reference(resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-sql-b'), '2024-05-01').ipConfigurations[0].properties.privateIPAddress]"
-            }
-          }
-        }
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'deploy-networking')]"
-      ]
-    },
-    {
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2025-04-01",
       "name": "deploy-load-balancer",
       "properties": {
         "expressionEvaluationOptions": {
@@ -1140,12 +798,8 @@
           "location": {
             "value": "[parameters('location')]"
           },
-          "proxySubnetId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-networking'), '2025-04-01').outputs.proxySubnetId.value]"
-          },
-          "frontendIp": {
-            "value": "[parameters('lbFrontendIp')]"
-          }
+          "proxySubnetId": "[if(equals(parameters('deployMode'), 'lab'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'deploy-networking'), '2025-04-01').outputs.proxySubnetId.value), createObject('value', parameters('existingProxySubnetId')))]",
+          "frontendIp": "[if(equals(parameters('deployMode'), 'lab'), createObject('value', parameters('lbFrontendIp')), createObject('value', parameters('existingLbFrontendIp')))]"
         },
         "template": {
           "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
@@ -1153,8 +807,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "11164267883440081765"
+              "version": "0.41.2.15936",
+              "templateHash": "11692124926408747630"
             }
           },
           "parameters": {
@@ -1271,9 +925,7 @@
           "location": {
             "value": "[parameters('location')]"
           },
-          "proxySubnetId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-networking'), '2025-04-01').outputs.proxySubnetId.value]"
-          },
+          "proxySubnetId": "[if(equals(parameters('deployMode'), 'lab'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'deploy-networking'), '2025-04-01').outputs.proxySubnetId.value), createObject('value', parameters('existingProxySubnetId')))]",
           "adminUsername": {
             "value": "[parameters('adminUsername')]"
           },
@@ -1286,9 +938,10 @@
           "vmSize": {
             "value": "[parameters('vmSize')]"
           },
-          "sqlmiFqdn": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-sql-mi'), '2025-04-01').outputs.miFqdn.value]"
+          "instanceCount": {
+            "value": 2
           },
+          "sqlmiFqdn": "[if(equals(parameters('deployMode'), 'lab'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'deploy-sql-mi'), '2025-04-01').outputs.miFqdn.value), createObject('value', parameters('existingMiFqdn')))]",
           "lbBackendPoolId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-load-balancer'), '2025-04-01').outputs.backendPoolId.value]"
           }
@@ -1299,8 +952,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "2140277234433088112"
+              "version": "0.41.2.15936",
+              "templateHash": "611489310611741610"
             }
           },
           "parameters": {
@@ -1317,8 +970,7 @@
               "type": "securestring"
             },
             "sqlmiFqdn": {
-              "type": "string",
-              "defaultValue": "sqlmi-test.fake-sqlmi.database.windows.net"
+              "type": "string"
             },
             "lbBackendPoolId": {
               "type": "string",
@@ -1331,6 +983,15 @@
                 "password",
                 "sshPublicKey"
               ]
+            },
+            "instanceCount": {
+              "type": "int",
+              "defaultValue": 2,
+              "minValue": 1,
+              "maxValue": 4,
+              "metadata": {
+                "description": "Number of HAProxy VMs to deploy (2 = active/active behind LB)"
+              }
             },
             "vmSize": {
               "type": "string",
@@ -1345,9 +1006,13 @@
           },
           "resources": [
             {
+              "copy": {
+                "name": "nic",
+                "count": "[length(range(0, parameters('instanceCount')))]"
+              },
               "type": "Microsoft.Network/networkInterfaces",
               "apiVersion": "2024-05-01",
-              "name": "nic-vm-haproxy",
+              "name": "[format('nic-vm-haproxy-{0}', add(range(0, parameters('instanceCount'))[copyIndex()], 1))]",
               "location": "[parameters('location')]",
               "properties": {
                 "enableIPForwarding": true,
@@ -1366,16 +1031,20 @@
               }
             },
             {
+              "copy": {
+                "name": "vm",
+                "count": "[length(range(0, parameters('instanceCount')))]"
+              },
               "type": "Microsoft.Compute/virtualMachines",
               "apiVersion": "2024-07-01",
-              "name": "vm-haproxy",
+              "name": "[format('vm-haproxy-{0}', add(range(0, parameters('instanceCount'))[copyIndex()], 1))]",
               "location": "[parameters('location')]",
               "properties": {
                 "hardwareProfile": {
                   "vmSize": "[parameters('vmSize')]"
                 },
                 "osProfile": {
-                  "computerName": "vm-haproxy",
+                  "computerName": "[format('vm-haproxy-{0}', add(range(0, parameters('instanceCount'))[copyIndex()], 1))]",
                   "adminUsername": "[parameters('adminUsername')]",
                   "adminPassword": "[if(equals(parameters('authenticationType'), 'password'), parameters('adminPasswordOrKey'), null())]",
                   "linuxConfiguration": "[variables('linuxConfiguration')]",
@@ -1398,28 +1067,30 @@
                 "networkProfile": {
                   "networkInterfaces": [
                     {
-                      "id": "[resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-haproxy')]"
+                      "id": "[resourceId('Microsoft.Network/networkInterfaces', format('nic-vm-haproxy-{0}', add(range(0, parameters('instanceCount'))[range(0, parameters('instanceCount'))[copyIndex()]], 1)))]"
                     }
                   ]
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-haproxy')]"
+                "[resourceId('Microsoft.Network/networkInterfaces', format('nic-vm-haproxy-{0}', add(range(0, parameters('instanceCount'))[range(0, parameters('instanceCount'))[copyIndex()]], 1)))]"
               ]
             }
           ],
           "outputs": {
-            "vmName": {
-              "type": "string",
-              "value": "vm-haproxy"
+            "vmNames": {
+              "type": "array",
+              "copy": {
+                "count": "[length(range(0, parameters('instanceCount')))]",
+                "input": "[format('vm-haproxy-{0}', add(range(0, parameters('instanceCount'))[range(0, parameters('instanceCount'))[copyIndex()]], 1))]"
+              }
             },
-            "nicId": {
-              "type": "string",
-              "value": "[resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-haproxy')]"
-            },
-            "privateIp": {
-              "type": "string",
-              "value": "[reference(resourceId('Microsoft.Network/networkInterfaces', 'nic-vm-haproxy'), '2024-05-01').ipConfigurations[0].properties.privateIPAddress]"
+            "privateIps": {
+              "type": "array",
+              "copy": {
+                "count": "[length(range(0, parameters('instanceCount')))]",
+                "input": "[reference(resourceId('Microsoft.Network/networkInterfaces', format('nic-vm-haproxy-{0}', add(range(0, parameters('instanceCount'))[range(0, parameters('instanceCount'))[copyIndex()]], 1))), '2024-05-01').ipConfigurations[0].properties.privateIPAddress]"
+              }
             }
           }
         }
@@ -1431,6 +1102,7 @@
       ]
     },
     {
+      "condition": "[parameters('deployClientVm')]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "deploy-client-vm",
@@ -1443,9 +1115,7 @@
           "location": {
             "value": "[parameters('location')]"
           },
-          "clientSubnetId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-networking'), '2025-04-01').outputs.clientSubnetId.value]"
-          },
+          "clientSubnetId": "[if(equals(parameters('deployMode'), 'lab'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'deploy-networking'), '2025-04-01').outputs.clientSubnetId.value), createObject('value', parameters('existingProxySubnetId')))]",
           "adminUsername": {
             "value": "[parameters('adminUsername')]"
           },
@@ -1465,8 +1135,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "6990971870186359064"
+              "version": "0.41.2.15936",
+              "templateHash": "1502023175067147810"
             }
           },
           "parameters": {
@@ -1608,27 +1278,15 @@
     },
     "clientPublicIp": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-client-vm'), '2025-04-01').outputs.publicIp.value]"
+      "value": "[if(parameters('deployClientVm'), reference(resourceId('Microsoft.Resources/deployments', 'deploy-client-vm'), '2025-04-01').outputs.publicIp.value, '')]"
     },
     "sqlmiFqdn": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-sql-mi'), '2025-04-01').outputs.miFqdn.value]"
+      "value": "[if(equals(parameters('deployMode'), 'lab'), reference(resourceId('Microsoft.Resources/deployments', 'deploy-sql-mi'), '2025-04-01').outputs.miFqdn.value, parameters('existingMiFqdn'))]"
     },
     "sqlmiName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-sql-mi'), '2025-04-01').outputs.miName.value]"
-    },
-    "simulatedFqdn": {
-      "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-dns'), '2025-04-01').outputs.fqdn.value]"
-    },
-    "backendVmAIp": {
-      "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-backend-vms'), '2025-04-01').outputs.vmAPrivateIp.value]"
-    },
-    "backendVmBIp": {
-      "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-backend-vms'), '2025-04-01').outputs.vmBPrivateIp.value]"
+      "value": "[if(equals(parameters('deployMode'), 'lab'), reference(resourceId('Microsoft.Resources/deployments', 'deploy-sql-mi'), '2025-04-01').outputs.miName.value, 'N/A - existing mode')]"
     }
   }
 }

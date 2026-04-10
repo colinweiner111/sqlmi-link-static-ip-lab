@@ -233,8 +233,13 @@ Deploys everything: two VNets, SQL MI (free tier), HAProxy VMs, LB, and a test c
     -Location "westcentralus" `
     -AdminUsername "azureuser" `
     -AdminPassword (ConvertTo-SecureString "YourP@ssword123!" -AsPlainText -Force) `
+    -EntraAdminObjectId "<your-entra-admin-object-id>" `
+    -EntraAdminLogin "<admin@yourtenant.onmicrosoft.com>" `
+    -TenantId "<your-tenant-id>" `
     -VmSize "Standard_D2s_v5"              # optional — default is Standard_D2s_v5
 ```
+
+> **Entra params** — required for SQL MI creation (lab mode only). These are used to configure Entra-only authentication on the new SQL MI during deployment. They are **not needed for Option B** — in that case the SQL MI already exists and its Entra auth was configured when it was originally created. Run `az account show --query '{tenantId:tenantId}'` for your tenant ID, and `az ad user show --id <upn> --query id -o tsv` for the admin object ID.
 
 ---
 

@@ -29,6 +29,16 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$LbFrontendIp = '',
 
+    # --- lab mode only ---
+    [Parameter(Mandatory = $false)]
+    [string]$EntraAdminObjectId = '',
+
+    [Parameter(Mandatory = $false)]
+    [string]$EntraAdminLogin = '',
+
+    [Parameter(Mandatory = $false)]
+    [string]$TenantId = '',
+
     [Parameter(Mandatory = $false)]
     [bool]$DeployNatGateway = $true,
 
@@ -53,6 +63,11 @@ if ($DeployMode -eq 'existing') {
     if (-not $ExistingMiFqdn)   { throw "-ExistingMiFqdn is required when -DeployMode is 'existing'" }
     if (-not $LbFrontendIp)     { throw "-LbFrontendIp is required when -DeployMode is 'existing'" }
 }
+if ($DeployMode -eq 'lab') {
+    if (-not $EntraAdminObjectId) { throw "-EntraAdminObjectId is required when -DeployMode is 'lab'" }
+    if (-not $EntraAdminLogin)    { throw "-EntraAdminLogin is required when -DeployMode is 'lab'" }
+    if (-not $TenantId)           { throw "-TenantId is required when -DeployMode is 'lab'" }
+}
 
 Write-Host "Mode: $DeployMode" -ForegroundColor DarkCyan
 Write-Host ""
@@ -65,6 +80,11 @@ az group create --name $ResourceGroupName --location $Location --output none
 Write-Host "[2/2] Deploying Bicep template (mode: $DeployMode)..." -ForegroundColor Yellow
 
 $paramList = @("adminUsername=$AdminUsername", "deployMode=$DeployMode", "deployNatGateway=$($DeployNatGateway.ToString().ToLower())", "deployClientVm=$($DeployClientVm.ToString().ToLower())", "vmSize=$VmSize")
+if ($DeployMode -eq 'lab') {
+    $paramList += "entraAdminObjectId=$EntraAdminObjectId"
+    $paramList += "entraAdminLogin=$EntraAdminLogin"
+    $paramList += "tenantId=$TenantId"
+}
 if ($DeployMode -eq 'existing') {
     $paramList += "existingProxySubnetId=$ExistingProxySubnetId"
     $paramList += "existingMiFqdn=$ExistingMiFqdn"
