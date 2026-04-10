@@ -19,7 +19,7 @@
   - [2. Login to Azure](#2-login-to-azure)
   - [3. Deploy](#3-deploy)
     - [Option A — Full Lab](#option-a--full-lab)
-    - [Option B — Existing VNet / Subnet / SQL MI](#option-b--existing-vnet--subnet--sql-mi)
+    - [Option B — BYO Existing VNet / Subnet / SQL MI](#option-b--byo-existing-vnet--subnet--sql-mi)ing-vnet--subnet--sql-mi)
   - [Current Deployment Details](#current-deployment-details)
   - [What Gets Deployed](#what-gets-deployed)
 - [Testing](#testing)
@@ -238,7 +238,7 @@ Deploys everything: two VNets, SQL MI (free tier), HAProxy VMs, LB, and a test c
 
 ---
 
-#### Option B — Existing VNet / Subnet / SQL MI
+#### Option B — BYO Existing VNet / Subnet / SQL MI
 
 Deploys **only** the HAProxy VMs, Load Balancer, and a test client VM into an existing subnet pointing at an existing SQL MI. Use this in customer environments where the VNet and SQL MI are already in place.
 
