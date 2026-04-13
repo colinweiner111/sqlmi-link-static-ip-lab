@@ -59,6 +59,9 @@ param deployNatGateway bool = true
 @description('Set to false to skip deploying the test client VM (useful in existing mode when you already have a test machine)')
 param deployClientVm bool = true
 
+@description('Set to false to skip (re-)deploying the HAProxy VMs — useful when re-running in existing mode to add only the client VM, since ARM does not allow updating osProfile.customData on an existing VM')
+param deployProxyVm bool = true
+
 // ============================================================================
 // 1. Networking — Two VNets + Peering + NSGs  (lab mode only)
 // ============================================================================
@@ -103,7 +106,7 @@ module lb 'load-balancer.bicep' = {
 // ============================================================================
 // 4. HAProxy VM — L4 TCP proxy
 // ============================================================================
-module proxyVm 'proxy-vm.bicep' = {
+module proxyVm 'proxy-vm.bicep' = if (deployProxyVm) {
   name: 'deploy-proxy-vm'
   params: {
     location: location
