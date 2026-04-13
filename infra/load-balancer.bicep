@@ -43,8 +43,6 @@ resource lb 'Microsoft.Network/loadBalancers@2024-05-01' = {
           protocol: 'Tcp'
           port: 5022
           intervalInSeconds: 15
-          numberOfProbes: 2
-          probeThreshold: 1
         }
       }
     ]
