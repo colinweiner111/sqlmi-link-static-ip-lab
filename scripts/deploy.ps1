@@ -91,9 +91,11 @@ if ($DeployMode -eq 'existing') {
     $paramList += "existingLbFrontendIp=$LbFrontendIp"
 }
 
+$templateFile = Join-Path $PSScriptRoot '..' 'infra' 'main.bicep'
+
 $result = az deployment group create `
     --resource-group $ResourceGroupName `
-    --template-file "$PSScriptRoot\..\infra\main.bicep" `
+    --template-file $templateFile `
     --parameters @paramList adminPassword=$AdminPassword `
     --output json | ConvertFrom-Json
 
