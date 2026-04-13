@@ -46,6 +46,9 @@ param(
     [bool]$DeployClientVm = $true,
 
     [Parameter(Mandatory = $false)]
+    [bool]$DeployProxyVm = $true,
+
+    [Parameter(Mandatory = $false)]
     [string]$VmSize = 'Standard_D2s_v5'
 )
 
@@ -79,7 +82,7 @@ az group create --name $ResourceGroupName --location $Location --output none
 # --- Deploy Bicep ---
 Write-Host "[2/2] Deploying Bicep template (mode: $DeployMode)..." -ForegroundColor Yellow
 
-$paramList = @("adminUsername=$AdminUsername", "deployMode=$DeployMode", "deployNatGateway=$($DeployNatGateway.ToString().ToLower())", "deployClientVm=$($DeployClientVm.ToString().ToLower())", "vmSize=$VmSize")
+$paramList = @("adminUsername=$AdminUsername", "deployMode=$DeployMode", "deployNatGateway=$($DeployNatGateway.ToString().ToLower())", "deployClientVm=$($DeployClientVm.ToString().ToLower())", "deployProxyVm=$($DeployProxyVm.ToString().ToLower())", "vmSize=$VmSize")
 if ($DeployMode -eq 'lab') {
     $paramList += "entraAdminObjectId=$EntraAdminObjectId"
     $paramList += "entraAdminLogin=$EntraAdminLogin"
