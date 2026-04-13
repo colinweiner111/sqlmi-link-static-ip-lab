@@ -199,10 +199,11 @@ The dashboard shows real-time status of all frontends (5022, 1433, 11000-11999),
 
 ### Prerequisites
 
-- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) installed
-- PowerShell 7+ (or Windows PowerShell 5.1)
+- **[Azure Cloud Shell](https://shell.azure.com)** — no local tooling required; Git, Azure CLI, and PowerShell are all pre-installed. Note: Cloud Shell has a **20-minute idle timeout** — keep the session active during long deployments (e.g. SQL MI provisioning takes 30-60 minutes)
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) installed *(if running locally)*
+- PowerShell 7+ (or Windows PowerShell 5.1) *(if running locally)*
 - Contributor access to an Azure subscription
-- [Git](https://git-scm.com/downloads) installed
+- [Git](https://git-scm.com/downloads) installed *(if running locally)*
 
 > **HAProxy outbound internet requirement:** During provisioning, the HAProxy VMs run `apt-get install haproxy` via cloud-init. The proxy subnet **must** have outbound internet access. One of the following is required:
 > - **NAT Gateway** — deploy with `-DeployNatGateway $true` (default); a new NAT Gateway is created and attached to the subnet
