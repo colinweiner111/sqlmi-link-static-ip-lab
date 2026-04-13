@@ -169,6 +169,20 @@ Key settings:
 - `resolve-prefer ipv4` — Ensures IPv4 resolution
 - Three frontends cover all MI connectivity: replication (5022), TDS (1433), and redirect (11000-11999)
 
+**Config file location:** `/etc/haproxy/haproxy.cfg`
+
+The config is written at first boot by cloud-init. Bicep uses `replace()` to substitute the real SQL MI FQDN into the config string before encoding it as `customData`, so the file on disk contains the actual FQDN — never a placeholder.
+
+**Auto-start on reboot:** HAProxy is enabled as a systemd service during provisioning:
+```bash
+systemctl enable haproxy   # registers the service to start on boot
+systemctl restart haproxy  # starts it immediately after cloud-init writes the config
+```
+You can verify it is running at any time with:
+```bash
+systemctl status haproxy
+```
+
 ### HAProxy Stats Dashboard
 
 A built-in stats dashboard is enabled on **port 8404** (internal only — no public IP):
