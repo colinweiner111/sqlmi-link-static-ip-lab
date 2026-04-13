@@ -19,7 +19,7 @@
   - [2. Login to Azure](#2-login-to-azure)
   - [3. Deploy](#3-deploy)
     - [Option A — Full Lab](#option-a--full-lab)
-    - [Option B — BYO Existing VNet / Subnet / SQL MI](#option-b--byo-existing-vnet--subnet--sql-mi)ing-vnet--subnet--sql-mi)
+    - [Option B — BYO Existing VNet / Subnet / SQL MI](#option-b--byo-existing-vnet--subnet--sql-mi)
   - [Current Deployment Details](#current-deployment-details)
   - [What Gets Deployed](#what-gets-deployed)
 - [Testing](#testing)
