@@ -113,7 +113,6 @@ resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = [for i in range(
   name: 'nic-vm-haproxy-${i + 1}'
   location: location
   properties: {
-    enableIPForwarding: true
     ipConfigurations: [
       {
         name: 'ipconfig1'
