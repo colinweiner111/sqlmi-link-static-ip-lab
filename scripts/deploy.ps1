@@ -49,7 +49,10 @@ param(
     [bool]$DeployProxyVm = $true,
 
     [Parameter(Mandatory = $false)]
-    [string]$VmSize = 'Standard_D2s_v5'
+    [string]$VmSize = 'Standard_D2s_v5',
+
+    [Parameter(Mandatory = $false)]
+    [string]$SubscriptionId = ''
 )
 
 $ErrorActionPreference = "Stop"
@@ -74,6 +77,12 @@ if ($DeployMode -eq 'lab') {
 
 Write-Host "Mode: $DeployMode" -ForegroundColor DarkCyan
 Write-Host ""
+
+# --- Set subscription ---
+if ($SubscriptionId) {
+    Write-Host "Setting subscription to '$SubscriptionId'..." -ForegroundColor Yellow
+    az account set --subscription $SubscriptionId
+}
 
 # --- Create resource group ---
 Write-Host "[1/2] Creating resource group '$ResourceGroupName' in '$Location'..." -ForegroundColor Yellow
