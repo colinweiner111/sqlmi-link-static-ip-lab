@@ -251,8 +251,8 @@ Deploys everything: two VNets, SQL MI (free tier), HAProxy VMs, LB, and a test c
     -EntraAdminObjectId "<your-entra-admin-object-id>" `
     -EntraAdminLogin "<admin@yourtenant.onmicrosoft.com>" `
     -TenantId "<your-tenant-id>" `
-    -VmSize "Standard_D2s_v5" `             # optional — default is Standard_D2s_v5
-    -SubscriptionId "<your-subscription-id>" # optional — ensures deployment targets the correct subscription
+    -VmSize "Standard_D2s_v5" `
+    -SubscriptionId "<your-subscription-id>"
 ```
 
 > **Entra params** — required for SQL MI creation (lab mode only). These are used to configure Entra-only authentication on the new SQL MI during deployment. They are **not needed for Option B** — in that case the SQL MI already exists and its Entra auth was configured when it was originally created. Run `az account show --query '{tenantId:tenantId}'` for your tenant ID, and `az ad user show --id <upn> --query id -o tsv` for the admin object ID.
@@ -296,7 +296,7 @@ az sql mi list `
     -DeployNatGateway $false `
     -DeployClientVm $false `
     -VmSize "Standard_D2s_v5" `
-    -SubscriptionId "<your-subscription-id>" # optional — ensures deployment targets the correct subscription
+    -SubscriptionId "<your-subscription-id>"
 ```
 
 > **`-DeployNatGateway`** — Set to `$false` if the subnet already has outbound internet via Azure Firewall, on-premises routing, or an existing NAT Gateway. Set to `$true` (default) to deploy a new NAT Gateway alongside the HAProxy VMs. HAProxy requires outbound internet during provisioning to `apt-get install haproxy`.
