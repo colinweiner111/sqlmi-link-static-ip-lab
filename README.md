@@ -6,28 +6,14 @@
   - [Why Application Gateway Won't Work](#why-application-gateway-wont-work)
   - [Why Private Endpoint Doesn't Solve This Either](#why-private-endpoint-doesnt-solve-this-either)
 - [Architecture](#architecture)
-  - [Why This Works](#why-this-works)
 - [Lab Environment](#lab-environment)
   - [Network Layout](#network-layout)
-  - [NSG Rules](#nsg-rules)
-  - [DNS](#dns)
   - [HAProxy Configuration](#haproxy-configuration)
-  - [HAProxy Stats Dashboard](#haproxy-stats-dashboard)
 - [Deployment](#deployment)
   - [Prerequisites](#prerequisites)
-  - [1. Clone the Repo](#1-clone-the-repo)
-  - [2. Login to Azure](#2-login-to-azure)
-  - [3. Deploy](#3-deploy)
-    - [Option A — Full Lab](#option-a--full-lab)
-    - [Option B — BYO Existing VNet / Subnet / SQL MI](#option-b--byo-existing-vnet--subnet--sql-mi)
-  - [Current Deployment Details](#current-deployment-details)
-  - [What Gets Deployed](#what-gets-deployed)
+  - [Full Lab](#option-a--full-lab)
+  - [BYO Existing VNet / Subnet / SQL MI](#option-b--byo-existing-vnet--subnet--sql-mi)
 - [Testing](#testing)
-  - [Prerequisites — Hosts File Override](#prerequisites--hosts-file-override)
-  - [Test 1 — HAProxy Backend Health](#test-1--haproxy-backend-health)
-  - [Test 2 — MI Link Creation (SSMS Wizard)](#test-2--mi-link-creation-ssms-wizard)
-  - [Test 3 — Planned Failover to SQL MI](#test-3--planned-failover-to-sql-mi)
-  - [Test 4 — Planned Failover Back to SQL Server](#test-4--planned-failover-back-to-sql-server)
 - [Success Criteria](#success-criteria)
 - [Cleanup](#cleanup)
 
@@ -69,7 +55,9 @@ Private Endpoint for SQL MI only supports port 1433, making it unsuitable for MI
 ## Architecture
 
 <p align="center">
-  <img src="image/architecture.drawio.svg?v=2" alt="Architecture diagram — ILB + HAProxy TCP proxy for SQL MI Link" width="820" />
+  <a href="image/architecture-v2.svg">
+    <img src="image/architecture-v2.svg" alt="Architecture diagram — ILB + HAProxy TCP proxy for SQL MI Link" width="100%" />
+  </a>
 </p>
 
 ### Why This Works
